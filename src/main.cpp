@@ -420,23 +420,65 @@ static void handle_wifi_save()
 // Pages: 0 Home, 1 Status, 2 Tools, 3 Clock, 4 Info.
 // Tapping a service opens its detail page on top (full screen, < Back).
 // LVGL callbacks and *_nolock functions run with the LVGL lock already held.
-#define UI_DARK 1                 // 1 = dark theme, 0 = light theme
+// ---- Saved UI settings (Settings page; kept in flash, survive reboots) ----
+struct UiSettings {
+    bool darkTheme = true;
+    bool alertsOn = true;       // false: no red banner and no buzzer (incidents are still logged)
+    bool buzzerMute = false;
+    uint16_t autoReturnS = 90;  // seconds without a touch before going back to Home, 0 = never
+    bool clock24h = true;
+};
+static UiSettings ui_set;
+bool ui_dark = true;            // not static: nettools.cpp reads it too
+static lv_obj_t *spage = nullptr;
+static lv_obj_t *s_return_lbl = nullptr;
+static lv_obj_t *s_clock_lbl = nullptr;
+
+static void ui_settings_load()
+{
+    Preferences p;
+    p.begin("uiset", false);
+    ui_set.darkTheme = p.getBool("dark", true);
+    ui_set.alertsOn = p.getBool("alerts", true);
+    ui_set.buzzerMute = p.getBool("mute", false);
+    ui_set.autoReturnS = p.getUShort("ret", 90);
+    ui_set.clock24h = p.getBool("h24", true);
+    p.end();
+    ui_dark = ui_set.darkTheme;
+}
+
+static void ui_settings_save()
+{
+    Preferences p;
+    p.begin("uiset", false);
+    p.putBool("dark", ui_set.darkTheme);
+    p.putBool("alerts", ui_set.alertsOn);
+    p.putBool("mute", ui_set.buzzerMute);
+    p.putUShort("ret", ui_set.autoReturnS);
+    p.putBool("h24", ui_set.clock24h);
+    p.end();
+}
+
+// Header clock text: "14:05" or "2:05p"
+static void fmt_hm(char *buf, size_t n, const struct tm &ti)
+{
+    if (ui_set.clock24h) {
+        snprintf(buf, n, "%02d:%02d", ti.tm_hour, ti.tm_min);
+    } else {
+        int h = ti.tm_hour % 12;
+        if (h == 0) h = 12;
+        snprintf(buf, n, "%d:%02d%c", h, ti.tm_min, ti.tm_hour < 12 ? 'a' : 'p');
+    }
+}
 #define CLOCK_TZ "EAT-3"          // POSIX time zone: EAT-3 means UTC+3. Change for another zone.
 static const int TAB_COUNT = 5;
 
-#if UI_DARK
-  #define C_BG       lv_color_hex(0x0f141a)
-  #define C_TEXT     lv_color_hex(0xe6ebf0)
-  #define C_CARD     lv_color_hex(0x232c37)
-  #define C_CHART_BG lv_color_hex(0x1a222b)
-  #define C_GRID     lv_color_hex(0x364352)
-#else
-  #define C_BG       lv_color_hex(0xffffff)
-  #define C_TEXT     lv_color_hex(0x1c2530)
-  #define C_CARD     lv_color_hex(0xe4e8ec)
-  #define C_CHART_BG lv_color_hex(0xf2f4f6)
-  #define C_GRID     lv_color_hex(0xd0d6dc)
-#endif
+// Colours follow the saved theme (ui_dark). Changing the theme restarts the board.
+#define C_BG       (ui_dark ? lv_color_hex(0x0f141a) : lv_color_hex(0xffffff))
+#define C_TEXT     (ui_dark ? lv_color_hex(0xe6ebf0) : lv_color_hex(0x1c2530))
+#define C_CARD     (ui_dark ? lv_color_hex(0x232c37) : lv_color_hex(0xe4e8ec))
+#define C_CHART_BG (ui_dark ? lv_color_hex(0x1a222b) : lv_color_hex(0xf2f4f6))
+#define C_GRID     (ui_dark ? lv_color_hex(0x364352) : lv_color_hex(0xd0d6dc))
 
 static const char *TAB_TEXT[TAB_COUNT] = {
     LV_SYMBOL_HOME "\nHome", LV_SYMBOL_LIST "\nStatus", LV_SYMBOL_SETTINGS "\nTools",
@@ -605,7 +647,13 @@ static void on_clock_timer(lv_timer_t *t)
         return;
     }
     char buf[32];
-    snprintf(buf, sizeof(buf), "%02d:%02d:%02d", ti.tm_hour, ti.tm_min, ti.tm_sec);
+    if (ui_set.clock24h) {
+        snprintf(buf, sizeof(buf), "%02d:%02d:%02d", ti.tm_hour, ti.tm_min, ti.tm_sec);
+    } else {
+        int h12 = ti.tm_hour % 12;
+        if (h12 == 0) h12 = 12;
+        snprintf(buf, sizeof(buf), "%d:%02d:%02d %s", h12, ti.tm_min, ti.tm_sec, ti.tm_hour < 12 ? "AM" : "PM");
+    }
     lv_label_set_text(c_time, buf);
     strftime(buf, sizeof(buf), "%a %d %b %Y", &ti);
     lv_label_set_text(c_date, buf);
@@ -656,11 +704,20 @@ static void on_back_click(lv_event_t *e)
 
 static void on_banner_tap(lv_event_t *e)
 {
+    int first = -1;
     for (int i = 0; i < MAX_SERVICES; i++) {
-        if (confirmedDown[i]) acked[i] = true;
+        if (confirmedDown[i]) {
+            if (first < 0 && !acked[i]) first = i;
+            acked[i] = true;
+        }
     }
     alarmActive = false;
     lv_obj_add_flag(banner, LV_OBJ_FLAG_HIDDEN);
+    if (first >= 0 && first < uiCount) {
+        selectedSvc = first;
+        render_detail_nolock();
+        lv_obj_clear_flag(dpage, LV_OBJ_FLAG_HIDDEN);
+    }
     Serial.println("Alarm acknowledged");
 }
 
@@ -751,7 +808,7 @@ static void update_home_nolock(int up, int total)
 static void on_home_timer(lv_timer_t *t)
 {
     struct tm ti;
-    if (getLocalTime(&ti, 0)) lv_label_set_text_fmt(h_time, "%02d:%02d", ti.tm_hour, ti.tm_min);
+    if (getLocalTime(&ti, 0)) { char tb[12]; fmt_hm(tb, sizeof(tb), ti); lv_label_set_text(h_time, tb); }
     else lv_label_set_text(h_time, "--:--");
 
     bool conn = WiFi.status() == WL_CONNECTED;
@@ -768,9 +825,11 @@ static void on_home_timer(lv_timer_t *t)
     if (hpage && !lv_obj_has_flag(hpage, LV_OBJ_FLAG_HIDDEN) && hist_shown != incidents_version()) render_hist_nolock();
 
     // after 90 s without a touch, go back to Home (unless a tool is busy, e.g. the signal meter)
-    if (lv_disp_get_inactive_time(NULL) > 90000 && !(nettools_is_open() && nettools_is_busy())) {
+    if (ui_set.autoReturnS > 0 && lv_disp_get_inactive_time(NULL) > (uint32_t)ui_set.autoReturnS * 1000UL &&
+        !(nettools_is_open() && nettools_is_busy())) {
         if (!lv_obj_has_flag(dpage, LV_OBJ_FLAG_HIDDEN)) lv_obj_add_flag(dpage, LV_OBJ_FLAG_HIDDEN);
         if (!lv_obj_has_flag(hpage, LV_OBJ_FLAG_HIDDEN)) lv_obj_add_flag(hpage, LV_OBJ_FLAG_HIDDEN);
+        if (spage && !lv_obj_has_flag(spage, LV_OBJ_FLAG_HIDDEN)) lv_obj_add_flag(spage, LV_OBJ_FLAG_HIDDEN);
         if (nettools_is_open()) nettools_close();
         if (active_tab() != 0) lv_obj_set_tile_id(tv, 0, 0, LV_ANIM_ON);
     }
@@ -818,6 +877,144 @@ static void make_stat(lv_obj_t *parent, int x, const char *title, lv_obj_t **val
     lv_obj_align(*value, LV_ALIGN_BOTTOM_MID, 0, -5);
 }
 
+// ---- Settings page ----
+static void restart_cb(lv_timer_t *t)
+{
+    ESP.restart();
+}
+
+static void on_settings_open(lv_event_t *e)
+{
+    lv_obj_clear_flag(spage, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void on_settings_back(lv_event_t *e)
+{
+    lv_obj_add_flag(spage, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void on_set_theme(lv_event_t *e)
+{
+    ui_set.darkTheme = lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED);
+    ui_settings_save();
+    lv_timer_create(restart_cb, 700, nullptr);   // colours are applied when the UI is built
+}
+
+static void on_set_alerts(lv_event_t *e)
+{
+    ui_set.alertsOn = lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED);
+    ui_settings_save();
+    if (!ui_set.alertsOn) {
+        alarmActive = false;
+        lv_obj_add_flag(banner, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        checkNow = true;   // re-evaluate straight away so a standing outage shows again
+    }
+}
+
+static void on_set_mute(lv_event_t *e)
+{
+    ui_set.buzzerMute = lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED);
+    ui_settings_save();
+    if (ui_set.buzzerMute) alarmActive = false;
+}
+
+static const uint16_t RETURN_OPTS[3] = {30, 90, 0};
+
+static void set_return_text()
+{
+    if (ui_set.autoReturnS == 0) lv_label_set_text(s_return_lbl, "Off");
+    else lv_label_set_text_fmt(s_return_lbl, "%u s", (unsigned)ui_set.autoReturnS);
+    lv_obj_center(s_return_lbl);
+}
+
+static void on_set_return(lv_event_t *e)
+{
+    int idx = 0;
+    for (int k = 0; k < 3; k++) {
+        if (RETURN_OPTS[k] == ui_set.autoReturnS) idx = k;
+    }
+    ui_set.autoReturnS = RETURN_OPTS[(idx + 1) % 3];
+    ui_settings_save();
+    set_return_text();
+}
+
+static void set_clock_text()
+{
+    lv_label_set_text(s_clock_lbl, ui_set.clock24h ? "24 h" : "12 h");
+    lv_obj_center(s_clock_lbl);
+}
+
+static void on_set_clock(lv_event_t *e)
+{
+    ui_set.clock24h = !ui_set.clock24h;
+    ui_settings_save();
+    set_clock_text();
+}
+
+static void settings_row(lv_obj_t *parent, const char *text, int y)
+{
+    lv_obj_t *l = lv_label_create(parent);
+    lv_label_set_text(l, text);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_16, 0);
+    lv_obj_align(l, LV_ALIGN_TOP_LEFT, 10, y + 8);
+}
+
+static void settings_switch(lv_obj_t *parent, int y, bool on, lv_event_cb_t cb)
+{
+    lv_obj_t *s = lv_switch_create(parent);
+    lv_obj_align(s, LV_ALIGN_TOP_RIGHT, -10, y + 4);
+    if (on) lv_obj_add_state(s, LV_STATE_CHECKED);
+    lv_obj_add_event_cb(s, cb, LV_EVENT_VALUE_CHANGED, nullptr);
+}
+
+static void settings_build_page()
+{
+    spage = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(spage, 240, 320);
+    lv_obj_set_pos(spage, 0, 0);
+    lv_obj_set_style_radius(spage, 0, 0);
+    lv_obj_set_style_border_width(spage, 0, 0);
+    lv_obj_set_style_pad_all(spage, 0, 0);
+    lv_obj_set_style_bg_color(spage, C_BG, 0);
+    lv_obj_set_style_bg_opa(spage, LV_OPA_COVER, 0);
+    paint(spage);
+    lv_obj_clear_flag(spage, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(spage, LV_OBJ_FLAG_HIDDEN);
+
+    make_button(spage, "< Back", 84, 8, 6, on_settings_back, nullptr);
+    lv_obj_t *title = lv_label_create(spage);
+    lv_label_set_text(title, "Settings");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_align(title, LV_ALIGN_TOP_RIGHT, -10, 14);
+
+    int y = 52;
+    settings_row(spage, "Dark theme", y);
+    settings_switch(spage, y, ui_set.darkTheme, on_set_theme);
+    y += 46;
+    settings_row(spage, "Alerts", y);
+    settings_switch(spage, y, ui_set.alertsOn, on_set_alerts);
+    y += 46;
+    settings_row(spage, "Buzzer mute", y);
+    settings_switch(spage, y, ui_set.buzzerMute, on_set_mute);
+    y += 46;
+    settings_row(spage, "Auto-return", y);
+    lv_obj_t *rb = make_button(spage, "", 84, 146, y, on_set_return, nullptr);
+    s_return_lbl = lv_obj_get_child(rb, 0);
+    set_return_text();
+    y += 46;
+    settings_row(spage, "Clock", y);
+    lv_obj_t *cb = make_button(spage, "", 84, 146, y, on_set_clock, nullptr);
+    s_clock_lbl = lv_obj_get_child(cb, 0);
+    set_clock_text();
+
+    lv_obj_t *hint = lv_label_create(spage);
+    lv_label_set_text(hint, "Changing the theme restarts the board");
+    lv_obj_set_style_text_font(hint, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(hint, lv_palette_main(LV_PALETTE_GREY), 0);
+    lv_obj_align(hint, LV_ALIGN_TOP_LEFT, 10, 288);
+}
+
 static void build_ui()
 {
     lv_obj_set_style_bg_color(lv_scr_act(), C_BG, 0);
@@ -851,6 +1048,18 @@ static void build_ui()
     lv_obj_set_style_text_font(h_wifi, &lv_font_montserrat_16, 0);
     lv_label_set_text(h_wifi, LV_SYMBOL_WIFI);
     lv_obj_align(h_wifi, LV_ALIGN_TOP_RIGHT, -68, 8);
+
+    lv_obj_t *h_gear = lv_btn_create(t0);      // opens the Settings page
+    lv_obj_set_size(h_gear, 34, 28);
+    lv_obj_align(h_gear, LV_ALIGN_TOP_RIGHT, -92, 3);
+    lv_obj_set_style_bg_opa(h_gear, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_shadow_width(h_gear, 0, 0);
+    lv_obj_set_style_pad_all(h_gear, 0, 0);
+    lv_obj_add_event_cb(h_gear, on_settings_open, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t *h_gear_lbl = lv_label_create(h_gear);
+    lv_label_set_text(h_gear_lbl, LV_SYMBOL_SETTINGS);
+    lv_obj_set_style_text_color(h_gear_lbl, lv_palette_main(LV_PALETTE_GREY), 0);
+    lv_obj_center(h_gear_lbl);
 
     h_arc = lv_arc_create(t0);
     lv_obj_set_size(h_arc, 120, 120);
@@ -1138,6 +1347,9 @@ static void build_ui()
     lv_obj_set_style_text_line_space(hist_label, 3, 0);
     lv_label_set_text(hist_label, "");
 
+    // ---- Settings page: full screen, on top of the tabs ----
+    settings_build_page();
+
     // ---- Tool page (nettools.cpp): full screen, on top of the tabs ----
     nettools_build_page(lv_scr_act());
 
@@ -1226,7 +1438,8 @@ static void update_alarm(const Service *snap, int count)
             if (first < 0) first = i;
         }
     }
-    alarmActive = unacked > 0;
+    if (!ui_set.alertsOn) unacked = 0;
+    alarmActive = unacked > 0 && !ui_set.buzzerMute;
 
     lvgl_port_lock(-1);
     if (unacked == 0) {
@@ -1245,8 +1458,8 @@ static void update_alarm(const Service *snap, int count)
 }
 
 // ================= Monitoring =================
-// Returns the HTTP status code, or a negative number on a connection error.
-static int check_service(const char *url, uint32_t &ms)
+// One request. Returns the HTTP status code, or a negative number on a connection error.
+static int check_once(const char *url, uint32_t &ms)
 {
     HTTPClient http;
     http.setTimeout(6000);
@@ -1268,6 +1481,36 @@ static int check_service(const char *url, uint32_t &ms)
     }
     ms = millis() - t0;
     return code;
+}
+
+// A TLS handshake needs one big free block of heap (PSRAM is not enabled in this build). Without
+// it the connect fails at once with "SSL - Memory allocation failed". That says nothing about the
+// service, so such a check waits and retries, and if memory never frees up it is reported as
+// CHECK_SKIPPED instead of a failure.
+static const uint32_t TLS_MIN_BLOCK = 20000;   // bytes; raise it if the error still shows in the log
+static const int CHECK_SKIPPED = -200;
+
+static int check_service(const char *url, uint32_t &ms)
+{
+    bool tls = strncmp(url, "https", 5) == 0;
+    bool lowHeap = false;
+    int code = -1;
+    for (int attempt = 0; attempt < 3; attempt++) {
+        if (tls && ESP.getMaxAllocHeap() < TLS_MIN_BLOCK) {
+            lowHeap = true;
+            Serial.printf("check: largest free block %u bytes, free heap %u, waiting\n", (unsigned)ESP.getMaxAllocHeap(), (unsigned)ESP.getFreeHeap());
+            vTaskDelay(pdMS_TO_TICKS(1500));
+            continue;
+        }
+        lowHeap = false;
+        Serial.printf("heap: largest block %u, free %u\n", (unsigned)ESP.getMaxAllocHeap(), (unsigned)ESP.getFreeHeap());
+        uint32_t t0 = millis();
+        code = check_once(url, ms);
+        bool failedFast = (code == -1) && (millis() - t0 < 2000);   // never really reached the network
+        if (!failedFast) return code;
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+    return lowHeap ? CHECK_SKIPPED : code;
 }
 
 // One place for service up/down events. Phone alerts will hook in here.
@@ -1318,6 +1561,11 @@ static void monitor_task(void *)
             if (cfgChanged) break;   // config edited mid-round: restart with the new list
             uint32_t ms = 0;
             int code = check_service(snap[i].url, ms);
+            if (code == CHECK_SKIPPED) {
+                Serial.printf("%-12s skipped (low memory), not counted\n", snap[i].name);
+                if (!confirmedDown[i]) up++;
+                continue;
+            }
             bool ok = code > 0 && code < 400;
             if (ok) up++;
             Serial.printf("%-12s code=%d  %lu ms  %s\n",
@@ -1387,6 +1635,7 @@ void setup()
     cfgMutex = xSemaphoreCreateMutex();
     incidents_begin();
     load_config();
+    ui_settings_load();
 
     Serial.println("Initializing board");
     Board *board = new Board();

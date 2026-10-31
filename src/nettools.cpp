@@ -33,18 +33,11 @@
 #endif
 
 // colours: keep in step with UI_DARK in main.cpp
-#define NT_DARK 1
-#if NT_DARK
-  #define NT_BG       lv_color_hex(0x0f141a)
-  #define NT_TEXT     lv_color_hex(0xe6ebf0)
-  #define NT_CHART_BG lv_color_hex(0x1a222b)
-  #define NT_GRID     lv_color_hex(0x364352)
-#else
-  #define NT_BG       lv_color_hex(0xffffff)
-  #define NT_TEXT     lv_color_hex(0x1c2530)
-  #define NT_CHART_BG lv_color_hex(0xf2f4f6)
-  #define NT_GRID     lv_color_hex(0xd0d6dc)
-#endif
+extern bool ui_dark;   // set in main.cpp from the saved theme
+#define NT_BG       (ui_dark ? lv_color_hex(0x0f141a) : lv_color_hex(0xffffff))
+#define NT_TEXT     (ui_dark ? lv_color_hex(0xe6ebf0) : lv_color_hex(0x1c2530))
+#define NT_CHART_BG (ui_dark ? lv_color_hex(0x1a222b) : lv_color_hex(0xf2f4f6))
+#define NT_GRID     (ui_dark ? lv_color_hex(0x364352) : lv_color_hex(0xd0d6dc))
 
 // ---------- settings from the web config page ----------
 static String g_cfg;
