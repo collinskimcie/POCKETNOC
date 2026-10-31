@@ -413,6 +413,8 @@ static void handle_wifi_save()
     ESP.restart();
 }
 
+#include "incidents.h"
+
 // ================= UI =================
 // Navigation: swipe sideways or use the tab bar.
 // Pages: 0 Home, 1 Status, 2 Tools, 3 Clock, 4 Info.
@@ -484,6 +486,10 @@ static lv_obj_t *h_wifi = nullptr;
 static lv_obj_t *h_avg = nullptr;
 static lv_obj_t *h_sig = nullptr;
 static lv_obj_t *h_up = nullptr;
+static lv_obj_t *hpage = nullptr;
+static lv_obj_t *hist_box = nullptr;
+static lv_obj_t *hist_label = nullptr;
+static uint32_t hist_shown = 0;
 
 static void paint(lv_obj_t *o)
 {
@@ -658,6 +664,27 @@ static void on_banner_tap(lv_event_t *e)
     Serial.println("Alarm acknowledged");
 }
 
+// ---- Incident history page ----
+static void render_hist_nolock()
+{
+    static char buf[1000];
+    incidents_format(buf, sizeof(buf));
+    lv_label_set_text(hist_label, buf);
+    hist_shown = incidents_version();
+}
+
+static void on_hist_open(lv_event_t *e)
+{
+    render_hist_nolock();
+    lv_obj_scroll_to_y(hist_box, 0, LV_ANIM_OFF);
+    lv_obj_clear_flag(hpage, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void on_hist_back(lv_event_t *e)
+{
+    lv_obj_add_flag(hpage, LV_OBJ_FLAG_HIDDEN);
+}
+
 // ---- Home page ----
 static void on_act_scan(lv_event_t *e)  { nettools_open("Scan networks"); }
 static void on_act_ping(lv_event_t *e)  { nettools_open("Ping"); }
@@ -738,9 +765,12 @@ static void on_home_timer(lv_timer_t *t)
     if (conn) lv_label_set_text_fmt(h_sig, "%d dBm", r);
     else lv_label_set_text(h_sig, "offline");
 
+    if (hpage && !lv_obj_has_flag(hpage, LV_OBJ_FLAG_HIDDEN) && hist_shown != incidents_version()) render_hist_nolock();
+
     // after 90 s without a touch, go back to Home (unless a tool is busy, e.g. the signal meter)
     if (lv_disp_get_inactive_time(NULL) > 90000 && !(nettools_is_open() && nettools_is_busy())) {
         if (!lv_obj_has_flag(dpage, LV_OBJ_FLAG_HIDDEN)) lv_obj_add_flag(dpage, LV_OBJ_FLAG_HIDDEN);
+        if (!lv_obj_has_flag(hpage, LV_OBJ_FLAG_HIDDEN)) lv_obj_add_flag(hpage, LV_OBJ_FLAG_HIDDEN);
         if (nettools_is_open()) nettools_close();
         if (active_tab() != 0) lv_obj_set_tile_id(tv, 0, 0, LV_ANIM_ON);
     }
@@ -840,6 +870,15 @@ static void build_ui()
     lv_obj_set_style_text_font(h_count, &lv_font_montserrat_30, 0);
     lv_label_set_text(h_count, "--");
     lv_obj_align_to(h_count, h_arc, LV_ALIGN_CENTER, 0, 0);
+
+    lv_obj_t *h_tap = lv_obj_create(t0);       // invisible: tap the ring to open the incident log
+    lv_obj_set_size(h_tap, 120, 120);
+    lv_obj_align(h_tap, LV_ALIGN_TOP_MID, 0, 30);
+    lv_obj_set_style_bg_opa(h_tap, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(h_tap, 0, 0);
+    lv_obj_set_style_radius(h_tap, LV_RADIUS_CIRCLE, 0);
+    lv_obj_clear_flag(h_tap, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(h_tap, on_hist_open, LV_EVENT_CLICKED, nullptr);
 
     h_caption = lv_label_create(t0);
     lv_obj_set_style_text_font(h_caption, &lv_font_montserrat_16, 0);
@@ -1067,6 +1106,38 @@ static void build_ui()
     lv_chart_set_all_value(d_chart, d_series, LV_CHART_POINT_NONE);
     render_detail_nolock();
 
+    // ---- Incident history page: full screen, on top of the tabs ----
+    hpage = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(hpage, 240, 320);
+    lv_obj_set_pos(hpage, 0, 0);
+    lv_obj_set_style_radius(hpage, 0, 0);
+    lv_obj_set_style_border_width(hpage, 0, 0);
+    lv_obj_set_style_pad_all(hpage, 0, 0);
+    lv_obj_set_style_bg_color(hpage, C_BG, 0);
+    lv_obj_set_style_bg_opa(hpage, LV_OPA_COVER, 0);
+    paint(hpage);
+    lv_obj_clear_flag(hpage, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(hpage, LV_OBJ_FLAG_HIDDEN);
+
+    make_button(hpage, "< Back", 84, 8, 6, on_hist_back, nullptr);
+    lv_obj_t *hist_title = lv_label_create(hpage);
+    lv_label_set_text(hist_title, "Incidents");
+    lv_obj_set_style_text_font(hist_title, &lv_font_montserrat_16, 0);
+    lv_obj_align(hist_title, LV_ALIGN_TOP_RIGHT, -10, 14);
+
+    hist_box = lv_obj_create(hpage);
+    lv_obj_set_size(hist_box, 224, 264);
+    lv_obj_align(hist_box, LV_ALIGN_TOP_LEFT, 8, 48);
+    lv_obj_set_style_bg_opa(hist_box, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(hist_box, 0, 0);
+    lv_obj_set_style_pad_all(hist_box, 0, 0);
+    paint(hist_box);
+    hist_label = lv_label_create(hist_box);
+    lv_obj_set_width(hist_label, 216);
+    lv_label_set_long_mode(hist_label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_line_space(hist_label, 3, 0);
+    lv_label_set_text(hist_label, "");
+
     // ---- Tool page (nettools.cpp): full screen, on top of the tabs ----
     nettools_build_page(lv_scr_act());
 
@@ -1199,6 +1270,13 @@ static int check_service(const char *url, uint32_t &ms)
     return code;
 }
 
+// One place for service up/down events. Phone alerts will hook in here.
+static void service_event(const char *name, bool down)
+{
+    if (down) incidents_start(name);
+    else incidents_end(name);
+}
+
 // Runs in its own FreeRTOS task so network waits never block the UI.
 static void monitor_task(void *)
 {
@@ -1223,6 +1301,9 @@ static void monitor_task(void *)
         xSemaphoreGive(cfgMutex);
 
         if (changed) {
+            const char *nm[MAX_SERVICES];
+            for (int i = 0; i < count; i++) nm[i] = snap[i].name;
+            incidents_close_missing(nm, count);
             for (int i = 0; i < MAX_SERVICES; i++) {
                 fails[i] = 0;
                 confirmedDown[i] = false;
@@ -1243,7 +1324,10 @@ static void monitor_task(void *)
                           snap[i].name, code, (unsigned long)ms, ok ? "UP" : "DOWN");
 
             if (ok) {
-                if (confirmedDown[i]) Serial.printf("RECOVERED: %s\n", snap[i].name);
+                if (confirmedDown[i]) {
+                    Serial.printf("RECOVERED: %s\n", snap[i].name);
+                    service_event(snap[i].name, false);
+                }
                 fails[i] = 0;
                 confirmedDown[i] = false;
                 acked[i] = false;
@@ -1251,6 +1335,7 @@ static void monitor_task(void *)
                 confirmedDown[i] = true;
                 acked[i] = false;
                 Serial.printf("ALERT: %s is DOWN\n", snap[i].name);
+                service_event(snap[i].name, true);
             }
             update_row(i, ok, ms, code);
         }
@@ -1300,6 +1385,7 @@ void setup()
     delay(1500);
 
     cfgMutex = xSemaphoreCreateMutex();
+    incidents_begin();
     load_config();
 
     Serial.println("Initializing board");
