@@ -34,7 +34,7 @@ static const char *DEFAULT_CFG =
     "Broken test, https://github.com/this-page-does-not-exist-404\n";
 
 // ---- Service configuration (shared between tasks, guarded by cfgMutex) ----
-struct Service { char name[24]; char url[110]; };
+struct Service { char name[24]; char url[110]; char word[24]; };
 static Service cfg[MAX_SERVICES];
 static int cfgCount = 0;
 static volatile bool cfgChanged = true;
@@ -110,7 +110,13 @@ static void notify_reload(bool announce)
 }
 
 // ================= Config parsing / storage =================
-// Format: one service per line, "Name, https://url". Returns the number parsed.
+// Format: one service per line:  "Name, https://url"  "Name, tcp://host:port"  "Name, ping://host"
+// A web line may end with ", contains=word". Returns the number parsed.
+static bool url_ok(const String &u)
+{
+    return u.startsWith("http://") || u.startsWith("https://") || u.startsWith("tcp://") || u.startsWith("ping://");
+}
+
 static int parse_config(const String &text, Service *out)
 {
     int n = 0;
@@ -127,12 +133,24 @@ static int parse_config(const String &text, Service *out)
         if (comma < 1) continue;
         String name = line.substring(0, comma);
         String url = line.substring(comma + 1);
+        String word = "";
+        int c2 = url.lastIndexOf(',');
+        if (c2 >= 0) {
+            String tail = url.substring(c2 + 1);
+            tail.trim();
+            if (tail.startsWith("contains=")) {
+                word = tail.substring(9);
+                word.trim();
+                url = url.substring(0, c2);
+            }
+        }
         name.trim();
         url.trim();
-        if (name.length() == 0) continue;
-        if (!(url.startsWith("http://") || url.startsWith("https://"))) continue;
+        if (name.length() == 0 || !url_ok(url)) continue;
+        if (!(url.startsWith("http://") || url.startsWith("https://"))) word = "";   // keywords: web checks only
         strlcpy(out[n].name, name.c_str(), sizeof(out[n].name));
         strlcpy(out[n].url, url.c_str(), sizeof(out[n].url));
+        strlcpy(out[n].word, word.c_str(), sizeof(out[n].word));
         n++;
     }
     return n;
@@ -290,7 +308,7 @@ static void handle_root()
                     "<h2>" DEVICE_NAME "</h2>"
                     "<form method=POST action=/save>"
                     "<h3>Services to monitor</h3>"
-                    "<p>One service per line: <code>Name, https://url</code> (max 5)</p>"
+                    "<p>One service per line (max 5): <code>Name, https://url</code>, or <code>Name, tcp://host:port</code> (port check), or <code>Name, ping://host</code>. Add <code>, contains=word</code> to a web line to require that word in the page (case sensitive, up to 23 characters, searched in the first 16 KB).</p>"
                     "<textarea name=cfg rows=6 style='width:100%;font-family:monospace'>");
     page += html_escape(raw_cfg);
     page += F("</textarea>"
@@ -1509,54 +1527,121 @@ static void update_alarm(const Service *snap, int count)
 }
 
 // ================= Monitoring =================
-// One request. Returns the HTTP status code, or a negative number on a connection error.
-static int check_once(const char *url, uint32_t &ms)
+// ---- Service checks ----
+// Each check returns an HTTP-style code: 200-399 = up, a negative number = down.
+// -1 connection failed, -100 bad address, -300 keyword not found.
+static const uint32_t TLS_MIN_BLOCK = 20000;   // bytes of one free heap block needed for a TLS handshake
+static const int CHECK_SKIPPED = -200;         // check could not run (low memory, tool busy): not a failure
+
+int nettools_ping(const char *host, uint32_t timeout_ms, uint32_t &rtt);   // nettools.cpp
+
+// Reads the start of the response body and looks for the word. Case sensitive, first 16 KB only.
+static bool body_contains(HTTPClient &http, const char *word, uint32_t timeout_ms)
+{
+    size_t n = strlen(word);
+    if (n == 0) return true;
+    if (n > 23) n = 23;
+    WiFiClient *s = http.getStreamPtr();
+    uint8_t win[24 + 256];
+    size_t keep = 0, total = 0;
+    uint32_t t0 = millis();
+    while (total < 16384 && millis() - t0 < timeout_ms) {
+        int avail = s->available();
+        if (avail <= 0) {
+            if (!http.connected()) break;
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+        int r = s->read(win + keep, avail > 256 ? 256 : avail);
+        if (r <= 0) continue;
+        total += r;
+        size_t have = keep + r;
+        for (size_t i = 0; i + n <= have; i++) {
+            if (memcmp(win + i, word, n) == 0) return true;
+        }
+        keep = have < n - 1 ? have : n - 1;
+        memmove(win, win + have - keep, keep);
+    }
+    return false;
+}
+
+static int web_get(HTTPClient &http, const Service &s, uint32_t t0, uint32_t &ms)
+{
+    int code = http.GET();
+    ms = millis() - t0;
+    if (s.word[0] && code > 0 && code < 400 && !body_contains(http, s.word, 6000)) code = -300;
+    http.end();
+    return code;
+}
+
+static int check_web(const Service &s, uint32_t &ms)
 {
     HTTPClient http;
     http.setTimeout(6000);
     http.setConnectTimeout(6000);
-    int code;
+    if (s.word[0]) http.useHTTP10(true);   // plain body, no chunked encoding to confuse the word search
     uint32_t t0 = millis();
-
-    if (strncmp(url, "https", 5) == 0) {
+    if (strncmp(s.url, "https", 5) == 0) {
         WiFiClientSecure client;
         client.setInsecure();   // reachability check only: certificates are not verified
-        if (!http.begin(client, url)) return -100;
-        code = http.GET();
-        http.end();
-    } else {
-        WiFiClient client;
-        if (!http.begin(client, url)) return -100;
-        code = http.GET();
-        http.end();
+        if (!http.begin(client, s.url)) return -100;
+        return web_get(http, s, t0, ms);
     }
-    ms = millis() - t0;
-    return code;
+    WiFiClient client;
+    if (!http.begin(client, s.url)) return -100;
+    return web_get(http, s, t0, ms);
 }
 
-// A TLS handshake needs one big free block of heap (PSRAM is not enabled in this build). Without
-// it the connect fails at once with "SSL - Memory allocation failed". That says nothing about the
-// service, so such a check waits and retries, and if memory never frees up it is reported as
-// CHECK_SKIPPED instead of a failure.
-static const uint32_t TLS_MIN_BLOCK = 20000;   // bytes; raise it if the error still shows in the log
-static const int CHECK_SKIPPED = -200;
-
-static int check_service(const char *url, uint32_t &ms)
+static int check_tcp(const char *spec, uint32_t &ms)   // spec = "host:port"
 {
-    bool tls = strncmp(url, "https", 5) == 0;
+    String hp(spec);
+    int colon = hp.lastIndexOf(':');
+    if (colon < 1) return -100;
+    String host = hp.substring(0, colon);
+    int port = hp.substring(colon + 1).toInt();
+    if (port < 1 || port > 65535) return -100;
+    uint32_t t0 = millis();
+    IPAddress ip;
+    if (!ip.fromString(host) && WiFi.hostByName(host.c_str(), ip) != 1) {
+        ms = millis() - t0;
+        return -1;
+    }
+    WiFiClient c;
+    bool ok = c.connect(ip, (uint16_t)port, 4000);
+    ms = millis() - t0;
+    c.stop();
+    return ok ? 200 : -1;
+}
+
+static int check_service(const Service &s, uint32_t &ms)
+{
+    if (WiFi.status() != WL_CONNECTED) return CHECK_SKIPPED;   // the board itself is offline: say nothing about the service
+    if (strncmp(s.url, "tcp://", 6) == 0) return check_tcp(s.url + 6, ms);
+    if (strncmp(s.url, "ping://", 7) == 0) {
+        uint32_t rtt = 0;
+        int r = nettools_ping(s.url + 7, 1000, rtt);   // 1 reply, 0 no reply, -1 ping helper busy
+        if (r < 0) return CHECK_SKIPPED;
+        ms = rtt;
+        return r ? 200 : -1;
+    }
+
+    // Web checks. A TLS handshake needs one big free heap block (PSRAM is not enabled in this build).
+    // Without it the connect fails at once with "SSL - Memory allocation failed", which says nothing
+    // about the service: wait and retry, and if memory never frees up report CHECK_SKIPPED.
+    bool tls = strncmp(s.url, "https", 5) == 0;
     bool lowHeap = false;
     int code = -1;
     for (int attempt = 0; attempt < 3; attempt++) {
         if (tls && ESP.getMaxAllocHeap() < TLS_MIN_BLOCK) {
             lowHeap = true;
-            Serial.printf("check: largest free block %u bytes, free heap %u, waiting\n", (unsigned)ESP.getMaxAllocHeap(), (unsigned)ESP.getFreeHeap());
+            Serial.printf("check: largest free block %u bytes, free heap %u, waiting\n",
+                          (unsigned)ESP.getMaxAllocHeap(), (unsigned)ESP.getFreeHeap());
             vTaskDelay(pdMS_TO_TICKS(1500));
             continue;
         }
         lowHeap = false;
-        Serial.printf("heap: largest block %u, free %u\n", (unsigned)ESP.getMaxAllocHeap(), (unsigned)ESP.getFreeHeap());
         uint32_t t0 = millis();
-        code = check_once(url, ms);
+        code = check_web(s, ms);
         bool failedFast = (code == -1) && (millis() - t0 < 2000);   // never really reached the network
         if (!failedFast) return code;
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -1685,7 +1770,7 @@ static void monitor_task(void *)
         for (int i = 0; i < count; i++) {
             if (cfgChanged) break;   // config edited mid-round: restart with the new list
             uint32_t ms = 0;
-            int code = check_service(snap[i].url, ms);
+            int code = check_service(snap[i], ms);
             if (code == CHECK_SKIPPED) {
                 Serial.printf("%-12s skipped (low memory), not counted\n", snap[i].name);
                 if (!confirmedDown[i]) up++;

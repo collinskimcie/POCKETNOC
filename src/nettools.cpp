@@ -1202,3 +1202,12 @@ void nettools_open(const char *name)
 void nettools_close() { on_back_click(nullptr); }
 bool nettools_is_open() { return p_page && !lv_obj_has_flag(p_page, LV_OBJ_FLAG_HIDDEN); }
 bool nettools_is_busy() { return s_busy; }
+
+// Used by main.cpp for ping:// service checks. Returns 1 = reply, 0 = no reply, -1 = a tool is using the ICMP helper.
+int nettools_ping(const char *host, uint32_t timeout_ms, uint32_t &rtt)
+{
+    if (s_busy) return -1;
+    IPAddress ip;
+    if (!resolve(String(host), ip)) return 0;
+    return ping_once(ip, timeout_ms, rtt) ? 1 : 0;
+}
