@@ -1616,8 +1616,6 @@ static int check_tcp(const char *spec, uint32_t &ms)   // spec = "host:port"
 static int check_service(const Service &s, uint32_t &ms)
 {
     if (WiFi.status() != WL_CONNECTED) return CHECK_SKIPPED;   // the board itself is offline: say nothing about the service
-    if (WiFi.status() != WL_CONNECTED) return CHECK_SKIPPED;   // the board itself is offline: say nothing about the service
-    if (strncmp(s.url, "tcp://", 6) == 0) return check_tcp(s.url + 6, ms);
     if (strncmp(s.url, "ping://", 7) == 0) {
         uint32_t rtt = 0;
         int r = nettools_ping(s.url + 7, 1000, rtt);   // 1 reply, 0 no reply, -1 ping helper busy
