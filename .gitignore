@@ -6,3 +6,4 @@ src/secrets.h
 logs/
 monitor.log
 monitor.log
+src/ota_password.h

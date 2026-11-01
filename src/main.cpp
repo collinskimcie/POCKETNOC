@@ -17,6 +17,9 @@
 #error "Add  #define CONFIG_PASSWORD \"...\"  to src/secrets.h"
 #endif
 
+#include <ArduinoOTA.h>
+#include "ota_password.h"
+static bool otaStarted = false;
 using namespace esp_panel::drivers;
 using namespace esp_panel::board;
 
@@ -34,7 +37,7 @@ static const char *DEFAULT_CFG =
     "Broken test, https://github.com/this-page-does-not-exist-404\n";
 
 // ---- Service configuration (shared between tasks, guarded by cfgMutex) ----
-struct Service { char name[24]; char url[110]; char word[24]; };
+struct Service { char name[24]; char url[110]; char word[24]; uint16_t every; uint16_t slow; };
 static Service cfg[MAX_SERVICES];
 static int cfgCount = 0;
 static volatile bool cfgChanged = true;
@@ -134,16 +137,21 @@ static int parse_config(const String &text, Service *out)
         String name = line.substring(0, comma);
         String url = line.substring(comma + 1);
         String word = "";
-        int c2 = url.lastIndexOf(',');
-        if (c2 >= 0) {
+        int every = 0, slow = 0;
+        int c2;
+        while ((c2 = url.lastIndexOf(',')) >= 0) {   // options at the end of the line, in any order
             String tail = url.substring(c2 + 1);
             tail.trim();
-            if (tail.startsWith("contains=")) {
-                word = tail.substring(9);
-                word.trim();
-                url = url.substring(0, c2);
-            }
+            if (tail.startsWith("contains=")) { word = tail.substring(9); word.trim(); }
+            else if (tail.startsWith("every=")) every = tail.substring(6).toInt();
+            else if (tail.startsWith("slow=")) slow = tail.substring(5).toInt();
+            else break;
+            url = url.substring(0, c2);
         }
+        if (every > 0 && every < 10) every = 10;
+        if (every > 3600) every = 3600;
+        if (slow < 0) slow = 0;
+        if (slow > 60000) slow = 60000;
         name.trim();
         url.trim();
         if (name.length() == 0 || !url_ok(url)) continue;
@@ -151,6 +159,8 @@ static int parse_config(const String &text, Service *out)
         strlcpy(out[n].name, name.c_str(), sizeof(out[n].name));
         strlcpy(out[n].url, url.c_str(), sizeof(out[n].url));
         strlcpy(out[n].word, word.c_str(), sizeof(out[n].word));
+        out[n].every = (uint16_t)every;
+        out[n].slow = (uint16_t)slow;
         n++;
     }
     return n;
@@ -308,7 +318,7 @@ static void handle_root()
                     "<h2>" DEVICE_NAME "</h2>"
                     "<form method=POST action=/save>"
                     "<h3>Services to monitor</h3>"
-                    "<p>One service per line (max 5): <code>Name, https://url</code>, or <code>Name, tcp://host:port</code> (port check), or <code>Name, ping://host</code>. Add <code>, contains=word</code> to a web line to require that word in the page (case sensitive, up to 23 characters, searched in the first 16 KB).</p>"
+                    "<p>One service per line (max 5): <code>Name, https://url</code>, or <code>Name, tcp://host:port</code> (port check), or <code>Name, ping://host</code>. Add <code>, contains=word</code> to a web line to require that word in the page (case sensitive, up to 23 characters, searched in the first 16 KB). A line can also end with <code>, every=60</code> (check at most every 60 seconds, minimum 10) and <code>, slow=1500</code> (alert when 3 checks in a row take longer than 1500 ms).</p>"
                     "<textarea name=cfg rows=6 style='width:100%;font-family:monospace'>");
     page += html_escape(raw_cfg);
     page += F("</textarea>"
@@ -1757,6 +1767,9 @@ static void service_event(const char *name, bool down, uint32_t downSecs = 0)
     notify_queue(msg, down ? NOTE_DOWN : NOTE_UP);
 }
 
+static uint32_t lastRun[MAX_SERVICES];   // when each service was last checked (0 = not yet)
+static uint8_t slowRuns[MAX_SERVICES];   // consecutive checks slower than the service's slow= limit
+
 // Runs in its own FreeRTOS task so network waits never block the UI.
 static void monitor_task(void *)
 {
@@ -1801,6 +1814,8 @@ static void monitor_task(void *)
                 fails[i] = 0;
                 confirmedDown[i] = false;
                 acked[i] = false;
+                lastRun[i] = 0;
+                slowRuns[i] = 0;
             }
             refresh_rows(snap, count);
             update_alarm(snap, count);
@@ -1809,8 +1824,14 @@ static void monitor_task(void *)
         int up = 0;
         for (int i = 0; i < count; i++) {
             if (cfgChanged) break;   // config edited mid-round: restart with the new list
+            if (snap[i].every && lastRun[i] &&
+                millis() - lastRun[i] + 2000 < (uint32_t)snap[i].every * 1000UL) {
+                if (!confirmedDown[i]) up++;   // not due yet: keep the last known state
+                continue;
+            }
             uint32_t ms = 0;
             int code = check_service(snap[i], ms);
+            lastRun[i] = millis();
             if (code == CHECK_SKIPPED) {
                 Serial.printf("%-12s skipped (no Wi-Fi, low memory or tool busy), not counted\n", snap[i].name);
                 if (!confirmedDown[i]) up++;
@@ -1820,6 +1841,22 @@ static void monitor_task(void *)
             if (ok) up++;
             Serial.printf("%-12s code=%d  %lu ms  %s\n",
                           snap[i].name, code, (unsigned long)ms, ok ? "UP" : "DOWN");
+            if (ok && snap[i].slow && !confirmedDown[i]) {
+                char sm[96];
+                if ((int)ms > snap[i].slow) {
+                    if (slowRuns[i] < 255 && ++slowRuns[i] == 3) {
+                        snprintf(sm, sizeof(sm), "%s is slow: %lu ms (limit %u)",
+                                 snap[i].name, (unsigned long)ms, (unsigned)snap[i].slow);
+                        notify_queue(sm, NOTE_TEST);
+                    }
+                } else {
+                    if (slowRuns[i] >= 3) {
+                        snprintf(sm, sizeof(sm), "%s speed is back to normal", snap[i].name);
+                        notify_queue(sm, NOTE_TEST);
+                    }
+                    slowRuns[i] = 0;
+                }
+            }
 
             if (ok) {
                 if (confirmedDown[i] && ++oks[i] < RECOVER_OKS) {
@@ -1906,6 +1943,32 @@ static void buzzer_task(void *)
 }
 
 // ================= Arduino entry points =================
+// ---- Display brightness: dims after a period without touch, wakes on touch ----
+static Board *gBoard = nullptr;
+static const int BRIGHT_NORMAL = 100;            // percent
+static const int BRIGHT_DIM = 15;                // percent
+static const uint32_t DIM_AFTER_MS = 60000;      // idle time before dimming
+
+static void backlight_task(void *)
+{
+    int cur = -1;
+    for (;;) {
+        bool alarm = false;
+        for (int i = 0; i < MAX_SERVICES; i++) {
+            if (confirmedDown[i] && !acked[i]) alarm = true;   // keep the screen bright while something is DOWN
+        }
+        lvgl_port_lock(-1);
+        uint32_t idle = lv_disp_get_inactive_time(NULL);
+        lvgl_port_unlock();
+        int want = (alarm || idle < DIM_AFTER_MS) ? BRIGHT_NORMAL : BRIGHT_DIM;
+        if (want != cur && gBoard && gBoard->getBacklight()) {
+            gBoard->getBacklight()->setBrightness(want);
+            cur = want;
+        }
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+}
+
 void setup()
 {
     Serial.begin(115200);
@@ -1931,16 +1994,7 @@ void setup()
 #endif
     assert(board->begin());
 
-    // backlight test: dim to 30% at boot (remove after the experiment)
-    {
-        auto bl = board->getBacklight();
-        if (bl) {
-            bl->setBrightness(30);
-            Serial.println("backlight: set to 30%");
-        } else {
-            Serial.println("backlight: none configured");
-        }
-    }
+    gBoard = board;   // used by backlight_task
 
     Serial.println("Initializing LVGL");
     lvgl_port_init(board->getLCD(), board->getTouch());
@@ -1956,12 +2010,14 @@ void setup()
 
     xTaskCreatePinnedToCore(monitor_task, "monitor", 12288, nullptr, 1, nullptr, 0);
     xTaskCreatePinnedToCore(buzzer_task, "buzzer", 3072, nullptr, 1, nullptr, 0);
+    xTaskCreatePinnedToCore(backlight_task, "backlight", 3072, nullptr, 1, nullptr, 0);
     Serial.println("UI ready");
 }
 
 void loop()
 {
     wifi_service();
+    if (otaStarted) ArduinoOTA.handle();
     if (WiFi.status() == WL_CONNECTED || apActive) {
         if (!serverStarted) {
             static const char *hdrs[] = {"Authorization", "Cookie"};
@@ -1976,6 +2032,12 @@ void loop()
             server.on("/wifi", HTTP_POST, handle_wifi_save);
             server.begin();
             serverStarted = true;
+            ArduinoOTA.setHostname(DEVICE_HOST);
+            ArduinoOTA.setPassword(OTA_PASSWORD);
+            ArduinoOTA.setMdnsEnabled(false);   // main.cpp already runs mDNS
+            ArduinoOTA.onStart([]() { Serial.println("OTA: update starting"); });
+            ArduinoOTA.begin();
+            otaStarted = true;
             if (MDNS.begin(DEVICE_HOST)) {
                 MDNS.addService("http", "tcp", 80);
                 Serial.println("mDNS: http://" DEVICE_HOST ".local/");
