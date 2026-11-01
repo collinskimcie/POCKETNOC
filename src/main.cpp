@@ -1584,6 +1584,7 @@ static int check_web(const Service &s, uint32_t &ms)
     if (strncmp(s.url, "https", 5) == 0) {
         WiFiClientSecure client;
         client.setInsecure();   // reachability check only: certificates are not verified
+        client.setHandshakeTimeout(8);   // seconds; the default is 120
         if (!http.begin(client, s.url)) return -100;
         return web_get(http, s, t0, ms);
     }
@@ -1595,11 +1596,14 @@ static int check_web(const Service &s, uint32_t &ms)
 static int check_tcp(const char *spec, uint32_t &ms)   // spec = "host:port"
 {
     String hp(spec);
+    hp.trim();
     int colon = hp.lastIndexOf(':');
-    if (colon < 1) return -100;
+    int port = colon < 1 ? 0 : hp.substring(colon + 1).toInt();
+    if (colon < 1 || port < 1 || port > 65535) {
+        Serial.printf("tcp: bad address '%s' (needs tcp://host:port)\n", hp.c_str());
+        return -100;
+    }
     String host = hp.substring(0, colon);
-    int port = hp.substring(colon + 1).toInt();
-    if (port < 1 || port > 65535) return -100;
     uint32_t t0 = millis();
     IPAddress ip;
     if (!ip.fromString(host) && WiFi.hostByName(host.c_str(), ip) != 1) {
@@ -1613,9 +1617,25 @@ static int check_tcp(const char *spec, uint32_t &ms)   // spec = "host:port"
     return ok ? 200 : -1;
 }
 
+// True when Wi-Fi is up. Right after a (re)connect it waits 5 s so DNS and routes can settle.
+static bool wifi_settled()
+{
+    static bool was = false;
+    static uint32_t upAt = 0;
+    bool c = WiFi.status() == WL_CONNECTED;
+    if (c && !was) upAt = millis();
+    was = c;
+    while (c && millis() - upAt < 5000) {
+        vTaskDelay(pdMS_TO_TICKS(250));
+        c = WiFi.status() == WL_CONNECTED;
+        if (!c) was = false;
+    }
+    return c;
+}
+
 static int check_service(const Service &s, uint32_t &ms)
 {
-    if (WiFi.status() != WL_CONNECTED) return CHECK_SKIPPED;   // the board itself is offline: say nothing about the service
+    if (!wifi_settled()) return CHECK_SKIPPED;   // the board itself is offline: say nothing about the service
     if (strncmp(s.url, "ping://", 7) == 0) {
         uint32_t rtt = 0;
         int r = nettools_ping(s.url + 7, 1000, rtt);   // 1 reply, 0 no reply, -1 ping helper busy
@@ -1675,6 +1695,7 @@ static int notify_send(const char *text, uint8_t kind)
 
     WiFiClientSecure client;
     client.setInsecure();   // certificates are not verified (as for the service checks)
+    client.setHandshakeTimeout(8);   // seconds; the default is 120
     HTTPClient http;
     http.setTimeout(8000);
     http.setConnectTimeout(8000);
@@ -1720,12 +1741,19 @@ static void notify_flush()
 }
 
 // One place for service up/down events: the incident log and the phone alert.
-static void service_event(const char *name, bool down)
+static const int RECOVER_OKS = 2;              // OK checks in a row before a DOWN service counts as recovered
+static int oks[MAX_SERVICES];
+static uint32_t downSince[MAX_SERVICES];
+
+static void service_event(const char *name, bool down, uint32_t downSecs = 0)
 {
     if (down) incidents_start(name);
     else incidents_end(name);
     char msg[96];
-    snprintf(msg, sizeof(msg), "%s %s", name, down ? "is DOWN" : "is back UP");
+    if (down) snprintf(msg, sizeof(msg), "%s is DOWN", name);
+    else if (downSecs >= 120) snprintf(msg, sizeof(msg), "%s is back UP after %lu min", name, (unsigned long)(downSecs / 60));
+    else if (downSecs > 0) snprintf(msg, sizeof(msg), "%s is back UP after %lu s", name, (unsigned long)downSecs);
+    else snprintf(msg, sizeof(msg), "%s is back UP", name);
     notify_queue(msg, down ? NOTE_DOWN : NOTE_UP);
 }
 
@@ -1739,6 +1767,19 @@ static void monitor_task(void *)
     lvgl_port_unlock();
 
     configTzTime(CLOCK_TZ, "pool.ntp.org", "time.google.com");
+
+    {   // report unexpected restarts; restarts caused by saving on the web page stay quiet
+        esp_reset_reason_t rr = esp_reset_reason();
+        const char *why = nullptr;
+        if (rr == ESP_RST_PANIC) why = "a crash";
+        else if (rr == ESP_RST_INT_WDT || rr == ESP_RST_TASK_WDT || rr == ESP_RST_WDT) why = "a watchdog reset";
+        else if (rr == ESP_RST_BROWNOUT) why = "a power dip (brownout)";
+        if (why) {
+            char m[64];
+            snprintf(m, sizeof(m), "Board restarted after %s", why);
+            notify_queue(m, NOTE_TEST);
+        }
+    }
 
     Service snap[MAX_SERVICES];
     int count = 0;
@@ -1771,7 +1812,7 @@ static void monitor_task(void *)
             uint32_t ms = 0;
             int code = check_service(snap[i], ms);
             if (code == CHECK_SKIPPED) {
-                Serial.printf("%-12s skipped (low memory), not counted\n", snap[i].name);
+                Serial.printf("%-12s skipped (no Wi-Fi, low memory or tool busy), not counted\n", snap[i].name);
                 if (!confirmedDown[i]) up++;
                 continue;
             }
@@ -1781,18 +1822,27 @@ static void monitor_task(void *)
                           snap[i].name, code, (unsigned long)ms, ok ? "UP" : "DOWN");
 
             if (ok) {
-                if (confirmedDown[i]) {
-                    Serial.printf("RECOVERED: %s\n", snap[i].name);
-                    service_event(snap[i].name, false);
+                if (confirmedDown[i] && ++oks[i] < RECOVER_OKS) {
+                    // answered, but not trusted yet: stays DOWN until RECOVER_OKS OK checks in a row
+                } else {
+                    if (confirmedDown[i]) {
+                        Serial.printf("RECOVERED: %s\n", snap[i].name);
+                        service_event(snap[i].name, false, (millis() - downSince[i]) / 1000);
+                    }
+                    fails[i] = 0;
+                    oks[i] = 0;
+                    confirmedDown[i] = false;
+                    acked[i] = false;
                 }
-                fails[i] = 0;
-                confirmedDown[i] = false;
-                acked[i] = false;
-            } else if (++fails[i] >= FAIL_THRESHOLD && !confirmedDown[i]) {
-                confirmedDown[i] = true;
-                acked[i] = false;
-                Serial.printf("ALERT: %s is DOWN\n", snap[i].name);
-                service_event(snap[i].name, true);
+            } else {
+                oks[i] = 0;
+                if (++fails[i] >= FAIL_THRESHOLD && !confirmedDown[i]) {
+                    confirmedDown[i] = true;
+                    acked[i] = false;
+                    downSince[i] = millis();
+                    Serial.printf("ALERT: %s is DOWN\n", snap[i].name);
+                    service_event(snap[i].name, true);
+                }
             }
             update_row(i, ok, ms, code);
         }
@@ -1804,6 +1854,20 @@ static void monitor_task(void *)
         if (ntTest) {
             ntTest = false;
             notify_queue("Phone alerts are on", NOTE_TEST);
+        }
+        {   // report a Wi-Fi outage of a minute or more once the link is back (time is seen in check rounds)
+            static uint32_t lostAt = 0;
+            if (WiFi.status() != WL_CONNECTED) {
+                if (!lostAt) lostAt = millis();
+            } else if (lostAt) {
+                uint32_t secs = (millis() - lostAt) / 1000;
+                lostAt = 0;
+                if (secs >= 60) {
+                    char m[64];
+                    snprintf(m, sizeof(m), "Wi-Fi was down for at least %lu min", (unsigned long)(secs / 60));
+                    notify_queue(m, NOTE_TEST);
+                }
+            }
         }
         notify_flush();
 
