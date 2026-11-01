@@ -7,3 +7,4 @@ logs/
 monitor.log
 monitor.log
 src/ota_password.h
+apply_*.py
