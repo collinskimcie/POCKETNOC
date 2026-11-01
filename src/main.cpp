@@ -60,6 +60,55 @@ static lv_obj_t *summary = nullptr;
 static lv_obj_t *banner = nullptr;
 static lv_obj_t *banner_label = nullptr;
 
+// ---- Phone alert settings: an ntfytopic= line in the Tools settings ----
+static char ntTopic[65];               // guarded by cfgMutex
+static volatile bool ntTest = false;   // set when a new topic is saved: send one test message
+
+static String tools_get(const String &text, const char *key)
+{
+    String k = String(key) + "=";
+    int pos = 0, len = text.length();
+    while (pos < len) {
+        int eol = text.indexOf('\n', pos);
+        if (eol < 0) eol = len;
+        String line = text.substring(pos, eol);
+        pos = eol + 1;
+        line.trim();
+        if (line.startsWith(k)) {
+            String v = line.substring(k.length());
+            v.trim();
+            return v;
+        }
+    }
+    return "";
+}
+
+static bool topic_ok(const String &t)
+{
+    if (t.length() < 1 || t.length() > 64) return false;
+    for (int i = 0; i < t.length(); i++) {
+        char c = t.c_str()[i];
+        bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+        if (!ok) return false;
+    }
+    return true;
+}
+
+static void notify_reload(bool announce)
+{
+    String t = tools_get(raw_tools, "ntfytopic");
+    if (t.length() && !topic_ok(t)) {
+        Serial.println("notify: ntfytopic may only use letters, digits, - and _ (max 64 characters); ignoring it");
+        t = "";
+    }
+    bool changed;
+    xSemaphoreTake(cfgMutex, portMAX_DELAY);
+    changed = strcmp(ntTopic, t.c_str()) != 0;
+    strlcpy(ntTopic, t.c_str(), sizeof(ntTopic));
+    xSemaphoreGive(cfgMutex);
+    if (announce && changed && t.length()) ntTest = true;
+}
+
 // ================= Config parsing / storage =================
 // Format: one service per line, "Name, https://url". Returns the number parsed.
 static int parse_config(const String &text, Service *out)
@@ -96,6 +145,7 @@ static void load_config()
     raw_tools = prefs.isKey("tools") ? prefs.getString("tools", "") : String("");
     prefs.end();
     nettools_set_config(raw_tools);
+    notify_reload(false);
 
     Service tmp[MAX_SERVICES];
     int n = parse_config(raw_cfg, tmp);
@@ -248,7 +298,7 @@ static void handle_root()
               "<p>One <code>key=value</code> per line. Keys: <code>target</code> (host for ping and port check), "
               "<code>url</code> (for HTTP timing), <code>wol</code> (MAC address to wake), "
               "<code>mqtt</code> (host:port), <code>mquser</code>, <code>mqpass</code>, <code>mqtopic</code>, "
-              "<code>speedurl</code>. Note: the MQTT password is stored on the device as plain text.</p>"
+              "<code>speedurl</code>, <code>ntfytopic</code> (phone alerts through ntfy.sh: anyone who knows the topic name can read your alerts, so use a long random one). Note: the MQTT password is stored on the device as plain text.</p>"
               "<textarea name=tools rows=6 style='width:100%;font-family:monospace'>");
     page += html_escape(raw_tools);
     page += F("</textarea><br><button type=submit style='margin-top:8px;padding:8px 16px'>Save</button>"
@@ -282,6 +332,7 @@ static void handle_save()
         prefs.end();
         raw_tools = tools;
         nettools_set_config(raw_tools);
+        notify_reload(true);
     }
     save_config(text, parsed, n);
     nettools_set_default_url(parsed[0].url);
@@ -1513,11 +1564,85 @@ static int check_service(const char *url, uint32_t &ms)
     return lowHeap ? CHECK_SKIPPED : code;
 }
 
-// One place for service up/down events. Phone alerts will hook in here.
+// ---- Phone alerts through ntfy.sh ----
+// Messages are queued by service_event() and sent by the monitor task at the end of each round,
+// so a TLS session never overlaps a service check (the heap only fits one at a time).
+enum { NOTE_TEST = 0, NOTE_DOWN = 1, NOTE_UP = 2 };
+
+static bool notify_configured()
+{
+    bool ok;
+    xSemaphoreTake(cfgMutex, portMAX_DELAY);
+    ok = ntTopic[0] != 0;
+    xSemaphoreGive(cfgMutex);
+    return ok;
+}
+
+// Returns 1 = sent (or nothing to do), 0 = failed, -1 = not enough memory right now, try later.
+static int notify_send(const char *text, uint8_t kind)
+{
+    char topic[sizeof(ntTopic)];
+    xSemaphoreTake(cfgMutex, portMAX_DELAY);
+    strlcpy(topic, ntTopic, sizeof(topic));
+    xSemaphoreGive(cfgMutex);
+    if (!topic[0]) return 1;
+    if (WiFi.status() != WL_CONNECTED) return -1;
+    if (ESP.getMaxAllocHeap() < TLS_MIN_BLOCK) return -1;
+
+    WiFiClientSecure client;
+    client.setInsecure();   // certificates are not verified (as for the service checks)
+    HTTPClient http;
+    http.setTimeout(8000);
+    http.setConnectTimeout(8000);
+    String url = String("https://ntfy.sh/") + topic;
+    if (!http.begin(client, url)) return 0;
+    http.addHeader("Title", DEVICE_NAME);
+    http.addHeader("Priority", kind == NOTE_DOWN ? "high" : "default");
+    http.addHeader("Tags", kind == NOTE_DOWN ? "rotating_light" : kind == NOTE_UP ? "white_check_mark" : "bell");
+    int code = http.POST(String(text));
+    http.end();
+    if (code == 200) Serial.println("notify: sent");
+    else Serial.printf("notify: HTTP %d\n", code);
+    return code == 200 ? 1 : 0;
+}
+
+struct NoteMsg { char text[96]; uint8_t kind; uint8_t tries; };
+static const int NOTE_QUEUE = 6;
+static NoteMsg noteQ[NOTE_QUEUE];
+static int noteCount = 0;      // monitor task only
+
+static void notify_queue(const char *text, uint8_t kind)
+{
+    if (!notify_configured()) return;
+    if (noteCount >= NOTE_QUEUE) {                   // full: drop the oldest
+        memmove(&noteQ[0], &noteQ[1], sizeof(NoteMsg) * (NOTE_QUEUE - 1));
+        noteCount = NOTE_QUEUE - 1;
+    }
+    strlcpy(noteQ[noteCount].text, text, sizeof(noteQ[noteCount].text));
+    noteQ[noteCount].kind = kind;
+    noteQ[noteCount].tries = 0;
+    noteCount++;
+}
+
+static void notify_flush()
+{
+    while (noteCount > 0) {
+        int r = notify_send(noteQ[0].text, noteQ[0].kind);
+        bool drop = (r == 1) || (r == 0 && ++noteQ[0].tries >= 4);   // give up after 4 failed rounds
+        if (!drop) break;                                             // try again next round
+        memmove(&noteQ[0], &noteQ[1], sizeof(NoteMsg) * (noteCount - 1));
+        noteCount--;
+    }
+}
+
+// One place for service up/down events: the incident log and the phone alert.
 static void service_event(const char *name, bool down)
 {
     if (down) incidents_start(name);
     else incidents_end(name);
+    char msg[96];
+    snprintf(msg, sizeof(msg), "%s %s", name, down ? "is DOWN" : "is back UP");
+    notify_queue(msg, down ? NOTE_DOWN : NOTE_UP);
 }
 
 // Runs in its own FreeRTOS task so network waits never block the UI.
@@ -1591,6 +1716,12 @@ static void monitor_task(void *)
             update_summary(up, count);
             update_alarm(snap, count);
         }
+
+        if (ntTest) {
+            ntTest = false;
+            notify_queue("Phone alerts are on", NOTE_TEST);
+        }
+        notify_flush();
 
         // Wait for the next round, but wake immediately if the config changes.
         for (uint32_t w = 0; w < CHECK_INTERVAL_MS && !cfgChanged && !checkNow; w += 500) {
