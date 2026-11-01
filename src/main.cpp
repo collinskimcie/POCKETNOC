@@ -1867,6 +1867,17 @@ void setup()
 #endif
     assert(board->begin());
 
+    // backlight test: dim to 30% at boot (remove after the experiment)
+    {
+        auto bl = board->getBacklight();
+        if (bl) {
+            bl->setBrightness(30);
+            Serial.println("backlight: set to 30%");
+        } else {
+            Serial.println("backlight: none configured");
+        }
+    }
+
     Serial.println("Initializing LVGL");
     lvgl_port_init(board->getLCD(), board->getTouch());
 

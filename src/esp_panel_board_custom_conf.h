@@ -453,7 +453,7 @@
  *
  * Set to `1` to enable backlight support, `0` to disable
  */
-#define ESP_PANEL_BOARD_USE_BACKLIGHT           (0)
+#define ESP_PANEL_BOARD_USE_BACKLIGHT           (1)
 
 #if ESP_PANEL_BOARD_USE_BACKLIGHT
 /**
