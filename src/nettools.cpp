@@ -1169,6 +1169,49 @@ static void tool_trace()
     out_set(out);
 }
 
+// Used by main.cpp for the scheduled scan. Returns the number of devices that are not in the saved
+// baseline, -1 if a tool is busy or Wi-Fi is down, -2 if no baseline exists yet.
+int nettools_scan_new(char *first, size_t firstLen)
+{
+    if (s_busy || WiFi.status() != WL_CONNECTED) return -1;
+    uint8_t known[NEWDEV_MAX * 6];
+    int knownN = 0;
+    {
+        Preferences p;
+        p.begin("newdev", true);
+        size_t len = p.getBytesLength("macs");
+        if (len > 0 && len <= sizeof(known) && len % 6 == 0) {
+            p.getBytes("macs", known, len);
+            knownN = (int)(len / 6);
+        }
+        p.end();
+    }
+    if (knownN == 0) return -2;
+    s_busy = true;
+    if (first && firstLen) first[0] = 0;
+    IPAddress me = WiFi.localIP();
+    int fresh = 0;
+    for (int h = 1; h <= 254; h++) {
+        if (h == me[3]) continue;
+        if (WiFi.status() != WL_CONNECTED) break;
+        IPAddress ip(me[0], me[1], me[2], h);
+        uint32_t rtt = 0;
+        ping_once(ip, 150, rtt);
+        uint8_t mac[6];
+        if (!arp_mac(ip, mac)) continue;
+        bool isKnown = false;
+        for (int k = 0; k < knownN; k++) if (memcmp(known + k * 6, mac, 6) == 0) { isKnown = true; break; }
+        if (isKnown) continue;
+        fresh++;
+        if (first && firstLen && !first[0]) {
+            snprintf(first, firstLen, "%s %02X:%02X:%02X:%02X:%02X:%02X", ip.toString().c_str(),
+                     mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        }
+    }
+    s_busy = false;
+    return fresh;
+}
+
 static const ToolDef TOOLS[] = {
     {"Wi-Fi", "Scan networks", tool_scan, 0, true,
      "Nearby access points with signal, channel and security. Warns about open networks and look-alike names."},

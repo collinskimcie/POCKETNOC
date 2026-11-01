@@ -1545,6 +1545,7 @@ static const uint32_t TLS_MIN_BLOCK = 20000;   // bytes of one free heap block n
 static const int CHECK_SKIPPED = -200;         // check could not run (low memory, tool busy): not a failure
 
 int nettools_ping(const char *host, uint32_t timeout_ms, uint32_t &rtt);   // nettools.cpp
+int nettools_scan_new(char *first, size_t firstLen);                         // nettools.cpp
 
 // Reads the start of the response body and looks for the word. Case sensitive, first 16 KB only.
 static bool body_contains(HTTPClient &http, const char *word, uint32_t timeout_ms)
@@ -1975,6 +1976,23 @@ static void monitor_task(void *)
                     snprintf(m, sizeof(m), "Wi-Fi was down for at least %lu min", (unsigned long)(secs / 60));
                     notify_queue(m, NOTE_TEST);
                 }
+            }
+        }
+        {   // scheduled new-device scan: first 10 minutes after boot, then every 6 hours
+            static uint32_t nextScan = 0;
+            static int lastFresh = 0;
+            if (nextScan == 0) nextScan = millis() + 10UL * 60UL * 1000UL;
+            if ((int32_t)(millis() - nextScan) >= 0) {
+                nextScan = millis() + 6UL * 3600UL * 1000UL;
+                char who[48];
+                int f = nettools_scan_new(who, sizeof(who));
+                if (f > 0 && f > lastFresh) {
+                    char m[96];
+                    snprintf(m, sizeof(m), "%d unknown device(s) on the network, e.g. %s", f, who);
+                    notify_queue(m, NOTE_TEST);
+                }
+                if (f >= 0) lastFresh = f;
+                else if (f == -1) nextScan = millis() + 10UL * 60UL * 1000UL;   // a tool is busy: try again soon
             }
         }
         notify_flush();
