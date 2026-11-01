@@ -20,6 +20,7 @@
 #include <ArduinoOTA.h>
 #include "ota_password.h"
 static bool otaStarted = false;
+#include <WiFiUdp.h>
 using namespace esp_panel::drivers;
 using namespace esp_panel::board;
 
@@ -330,7 +331,7 @@ static void handle_root()
               "<textarea name=tools rows=6 style='width:100%;font-family:monospace'>");
     page += html_escape(raw_tools);
     page += F("</textarea><br><button type=submit style='margin-top:8px;padding:8px 16px'>Save</button>"
-              "</form><p><a href=/wifi>Wi-Fi networks</a> | <a href=/logout>Log out</a></p></body></html>");
+              "</form><p><a href=/wifi>Wi-Fi networks</a> | <a href=/tools>More tools</a> | <a href=/logout>Log out</a></p></body></html>");
     server.send(200, "text/html", page);
 }
 
@@ -444,7 +445,7 @@ static void handle_wifi_page()
                     "<textarea name=nets rows=6 style='width:100%;font-family:monospace'>");
     page += html_escape(raw_wifi);
     page += F("</textarea><br><button type=submit style='margin-top:8px;padding:8px 16px'>Save and restart</button>"
-              "</form><p><a href=/>Back</a></p></body></html>");
+              "</form><p><a href=/>Back</a> | <a href=/tools>More tools</a></p></body></html>");
     server.send(200, "text/html", page);
 }
 
@@ -1683,6 +1684,70 @@ static int check_service(const Service &s, uint32_t &ms)
 // so a TLS session never overlaps a service check (the heap only fits one at a time).
 enum { NOTE_TEST = 0, NOTE_DOWN = 1, NOTE_UP = 2 };
 
+// ---- Settings kept in flash, quiet hours, and the event log shown on the web page ----
+static volatile int brightNormal = 100, brightDim = 15, dimAfterS = 60;   // percent, percent, seconds (0 = never dim)
+static volatile int quietFrom = 0, quietTo = 0;                          // hours 0-23; equal = quiet hours off
+
+static void settings_load()
+{
+    prefs.begin("statusboard", true);
+    brightNormal = prefs.getInt("bn", 100);
+    brightDim = prefs.getInt("bd", 15);
+    dimAfterS = prefs.getInt("da", 60);
+    quietFrom = prefs.getInt("qf", 0);
+    quietTo = prefs.getInt("qt", 0);
+    prefs.end();
+}
+
+static void settings_save()
+{
+    prefs.begin("statusboard", false);
+    prefs.putInt("bn", brightNormal);
+    prefs.putInt("bd", brightDim);
+    prefs.putInt("da", dimAfterS);
+    prefs.putInt("qf", quietFrom);
+    prefs.putInt("qt", quietTo);
+    prefs.end();
+}
+
+static bool quiet_now()
+{
+    if (quietFrom == quietTo) return false;
+    time_t now = time(nullptr);
+    if (now < 1700000000) return false;   // clock not set yet
+    struct tm t;
+    localtime_r(&now, &t);
+    int h = t.tm_hour;
+    return quietFrom < quietTo ? (h >= quietFrom && h < quietTo) : (h >= quietFrom || h < quietTo);
+}
+
+#define LOG_N 60
+#define LOG_W 80
+static char logbuf[LOG_N][LOG_W];
+static volatile int logHead = 0, logCount = 0;
+
+// Written by the monitor task only; the web page copies lines out of it.
+static void weblog(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void weblog(const char *fmt, ...)
+{
+    char *line = logbuf[logHead];
+    int off;
+    time_t now = time(nullptr);
+    if (now > 1700000000) {
+        struct tm t;
+        localtime_r(&now, &t);
+        off = snprintf(line, LOG_W, "%02d:%02d:%02d ", t.tm_hour, t.tm_min, t.tm_sec);
+    } else {
+        off = snprintf(line, LOG_W, "+%lus ", (unsigned long)(millis() / 1000));
+    }
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(line + off, LOG_W - off, fmt, ap);
+    va_end(ap);
+    logHead = (logHead + 1) % LOG_N;
+    if (logCount < LOG_N) logCount++;
+}
+
 static bool notify_configured()
 {
     bool ok;
@@ -1716,8 +1781,8 @@ static int notify_send(const char *text, uint8_t kind)
     http.addHeader("Tags", kind == NOTE_DOWN ? "rotating_light" : kind == NOTE_UP ? "white_check_mark" : "bell");
     int code = http.POST(String(text));
     http.end();
-    if (code == 200) Serial.println("notify: sent");
-    else Serial.printf("notify: HTTP %d\n", code);
+    if (code == 200) { Serial.println("notify: sent"); weblog("phone alert sent"); }
+    else { Serial.printf("notify: HTTP %d\n", code); weblog("phone alert failed: HTTP %d", code); }
     return code == 200 ? 1 : 0;
 }
 
@@ -1728,6 +1793,11 @@ static int noteCount = 0;      // monitor task only
 
 static void notify_queue(const char *text, uint8_t kind)
 {
+    weblog("%s", text);
+    if (kind == NOTE_TEST && quiet_now() && strcmp(text, "Phone alerts are on") != 0) {
+        weblog("  (held back: quiet hours)");   // informational messages only; DOWN and UP always go out
+        return;
+    }
     if (!notify_configured()) return;
     if (noteCount >= NOTE_QUEUE) {                   // full: drop the oldest
         memmove(&noteQ[0], &noteQ[1], sizeof(NoteMsg) * (NOTE_QUEUE - 1));
@@ -1841,6 +1911,7 @@ static void monitor_task(void *)
             if (ok) up++;
             Serial.printf("%-12s code=%d  %lu ms  %s\n",
                           snap[i].name, code, (unsigned long)ms, ok ? "UP" : "DOWN");
+            if (!ok) weblog("%s check failed (code %d, %lu ms)", snap[i].name, code, (unsigned long)ms);
             if (ok && snap[i].slow && !confirmedDown[i]) {
                 char sm[96];
                 if ((int)ms > snap[i].slow) {
@@ -1945,9 +2016,7 @@ static void buzzer_task(void *)
 // ================= Arduino entry points =================
 // ---- Display brightness: dims after a period without touch, wakes on touch ----
 static Board *gBoard = nullptr;
-static const int BRIGHT_NORMAL = 100;            // percent
-static const int BRIGHT_DIM = 15;                // percent
-static const uint32_t DIM_AFTER_MS = 60000;      // idle time before dimming
+// brightness limits come from brightNormal / brightDim / dimAfterS (set on /tools)
 
 static void backlight_task(void *)
 {
@@ -1960,13 +2029,150 @@ static void backlight_task(void *)
         lvgl_port_lock(-1);
         uint32_t idle = lv_disp_get_inactive_time(NULL);
         lvgl_port_unlock();
-        int want = (alarm || idle < DIM_AFTER_MS) ? BRIGHT_NORMAL : BRIGHT_DIM;
+        int want = (alarm || dimAfterS == 0 || idle < (uint32_t)dimAfterS * 1000UL) ? brightNormal : brightDim;
         if (want != cur && gBoard && gBoard->getBacklight()) {
             gBoard->getBacklight()->setBrightness(want);
             cur = want;
         }
         vTaskDelay(pdMS_TO_TICKS(500));
     }
+}
+
+// ---- /tools: settings, export, event log, Wake-on-LAN ----
+static int arg_int(const char *name, int lo, int hi, int def)
+{
+    if (!server.hasArg(name)) return def;
+    int v = server.arg(name).toInt();
+    return v < lo ? lo : (v > hi ? hi : v);
+}
+
+static void handle_tools()
+{
+    if (!authed()) return;
+    String mac;
+    prefs.begin("statusboard", true);
+    mac = prefs.getString("wolmac", "");
+    prefs.end();
+    String page = F("<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1'>"
+                    "<title>" DEVICE_NAME " tools</title></head>"
+                    "<body style='font-family:sans-serif;max-width:520px;margin:20px auto;padding:0 12px'>"
+                    "<h2>More tools</h2><h3>Settings</h3><form method=POST action=/settings>");
+    page += F("<p>Brightness when active, 5 to 100 %: <input name=bn type=number min=5 max=100 value=");
+    page += String((int)brightNormal);
+    page += F("><br>Brightness when dimmed, 1 to 100 %: <input name=bd type=number min=1 max=100 value=");
+    page += String((int)brightDim);
+    page += F("><br>Dim after this many seconds without a touch (0 = never): <input name=da type=number min=0 max=3600 value=");
+    page += String((int)dimAfterS);
+    page += F("></p>");
+    page += F("<p>Quiet hours: informational alerts (slow service, restart, Wi-Fi outage) are held back from hour ");
+    page += String((int)quietFrom);
+    page += F(" to hour <input name=qt type=number min=0 max=23 value=");
+    page += String((int)quietTo);
+    page += F("> (0 to 23, board clock). Same number twice = off. DOWN and back-UP alerts are never held back.<br>"
+              "From hour: <input name=qf type=number min=0 max=23 value=");
+    page += String((int)quietFrom);
+    page += F("></p><button type=submit style='padding:8px 16px'>Save settings</button></form>"
+              "<h3>Services</h3><p><a href=/export>Download the services list</a> "
+              "(to import, paste it into the Services box on the main page and save).</p>"
+              "<h3>Events</h3><p><a href=/log>Recent alerts and failed checks</a></p>"
+              "<h3>Wake-on-LAN</h3><form method=POST action=/wol>MAC address: "
+              "<input name=mac placeholder='AA:BB:CC:DD:EE:FF' value='");
+    page += html_escape(mac);
+    page += F("'> <button type=submit style='padding:8px 16px'>Send</button></form>"
+              "<p><a href=/>Back</a></p></body></html>");
+    server.send(200, "text/html", page);
+}
+
+static void handle_settings_save()
+{
+    if (!authed()) return;
+    brightNormal = arg_int("bn", 5, 100, brightNormal);
+    brightDim = arg_int("bd", 1, 100, brightDim);
+    dimAfterS = arg_int("da", 0, 3600, dimAfterS);
+    quietFrom = arg_int("qf", 0, 23, quietFrom);
+    quietTo = arg_int("qt", 0, 23, quietTo);
+    settings_save();
+    server.sendHeader("Location", "/tools");
+    server.send(303);
+}
+
+static void handle_export()
+{
+    if (!authed()) return;
+    String out;
+    xSemaphoreTake(cfgMutex, portMAX_DELAY);
+    for (int i = 0; i < cfgCount; i++) {
+        out += cfg[i].name;
+        out += ", ";
+        out += cfg[i].url;
+        if (cfg[i].word[0]) { out += ", contains="; out += cfg[i].word; }
+        if (cfg[i].every) { out += ", every="; out += String((int)cfg[i].every); }
+        if (cfg[i].slow) { out += ", slow="; out += String((int)cfg[i].slow); }
+        out += '\n';
+    }
+    xSemaphoreGive(cfgMutex);
+    server.sendHeader("Content-Disposition", "attachment; filename=pocketnoc-services.txt");
+    server.send(200, "text/plain", out);
+}
+
+static void handle_log()
+{
+    if (!authed()) return;
+    String page = F("<!doctype html><html><head><meta http-equiv=refresh content=10>"
+                    "<meta name=viewport content='width=device-width,initial-scale=1'>"
+                    "<title>" DEVICE_NAME " events</title></head>"
+                    "<body style='font-family:sans-serif;max-width:640px;margin:20px auto;padding:0 12px'>"
+                    "<h2>Recent events</h2><p>Newest first. Refreshes every 10 seconds. "
+                    "Kept in memory only, so a restart clears it.</p>"
+                    "<pre style='white-space:pre-wrap;font-size:13px'>");
+    int cnt = logCount, head = logHead;
+    for (int k = 1; k <= cnt; k++) {
+        char line[LOG_W];
+        strlcpy(line, logbuf[(head - k + LOG_N) % LOG_N], sizeof(line));
+        page += html_escape(String(line));
+        page += '\n';
+    }
+    if (cnt == 0) page += "(nothing yet)";
+    page += F("</pre><p><a href=/tools>Back</a></p></body></html>");
+    server.send(200, "text/html", page);
+}
+
+static void handle_wol()
+{
+    if (!authed()) return;
+    String mac = server.arg("mac");
+    mac.trim();
+    uint8_t b[6] = {0};
+    int n = 0, nib = -1;
+    bool bad = false;
+    for (unsigned k = 0; k < mac.length() && !bad; k++) {
+        char c = mac[k];
+        int v = (c >= '0' && c <= '9') ? c - '0' : (c >= 'a' && c <= 'f') ? c - 'a' + 10 : (c >= 'A' && c <= 'F') ? c - 'A' + 10 : -1;
+        if (v >= 0) {
+            if (nib < 0) nib = v;
+            else { if (n < 6) b[n] = (uint8_t)((nib << 4) | v); n++; nib = -1; }
+        } else if (c == ':' || c == '-') {
+            if (nib >= 0) bad = true;   // single hex digit before a separator
+        } else {
+            bad = true;
+        }
+    }
+    if (bad || nib >= 0 || n != 6) {
+        server.send(400, "text/html", "<!doctype html><body style='font-family:sans-serif;padding:20px'>"
+                    "That is not a MAC address. Use six pairs like AA:BB:CC:DD:EE:FF. <a href=/tools>Back</a></body>");
+        return;
+    }
+    uint8_t pkt[102];
+    memset(pkt, 0xFF, 6);
+    for (int k = 0; k < 16; k++) memcpy(pkt + 6 + k * 6, b, 6);
+    WiFiUDP udp;
+    bool ok = udp.beginPacket(WiFi.broadcastIP(), 9) && udp.write(pkt, sizeof(pkt)) == sizeof(pkt) && udp.endPacket();
+    prefs.begin("statusboard", false);
+    prefs.putString("wolmac", mac);
+    prefs.end();
+    server.send(200, "text/html", String("<!doctype html><body style='font-family:sans-serif;padding:20px'>") +
+                (ok ? "Magic packet sent to " : "Could not send the packet to ") + html_escape(mac) +
+                ". <a href=/tools>Back</a></body>");
 }
 
 void setup()
@@ -1978,6 +2184,7 @@ void setup()
     incidents_begin();
     load_config();
     ui_settings_load();
+    settings_load();
 
     Serial.println("Initializing board");
     Board *board = new Board();
@@ -2030,6 +2237,11 @@ void loop()
             server.on("/save", HTTP_POST, handle_save);
             server.on("/wifi", HTTP_GET, handle_wifi_page);
             server.on("/wifi", HTTP_POST, handle_wifi_save);
+            server.on("/tools", HTTP_GET, handle_tools);
+            server.on("/settings", HTTP_POST, handle_settings_save);
+            server.on("/export", HTTP_GET, handle_export);
+            server.on("/log", HTTP_GET, handle_log);
+            server.on("/wol", HTTP_POST, handle_wol);
             server.begin();
             serverStarted = true;
             ArduinoOTA.setHostname(DEVICE_HOST);
