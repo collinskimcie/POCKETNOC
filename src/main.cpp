@@ -1231,6 +1231,7 @@ static void on_act_github(lv_event_t *e) { nettools_open("GitHub"); }
 static void home_style_card(lv_obj_t *c, int radius)
 {
     lv_obj_set_style_radius(c, radius, 0);
+    lv_obj_set_style_text_color(c, C_TEXT, 0);
     lv_obj_set_style_border_width(c, 0, 0);
     lv_obj_set_style_pad_all(c, 0, 0);
     lv_obj_set_style_bg_color(c, C_CARD, 0);
@@ -1242,7 +1243,7 @@ static lv_obj_t *home_stat(lv_obj_t *parent, int x, const char *cap, const lv_fo
 {
     lv_obj_t *c = lv_obj_create(parent);
     lv_obj_set_size(c, 70, 46);
-    lv_obj_align(c, LV_ALIGN_TOP_LEFT, x, 182);
+    lv_obj_align(c, LV_ALIGN_TOP_LEFT, x, 180);
     home_style_card(c, 10);
     lv_obj_t *k = lv_label_create(c);
     lv_label_set_text(k, cap);
@@ -1259,8 +1260,8 @@ static lv_obj_t *home_stat(lv_obj_t *parent, int x, const char *cap, const lv_fo
 static void home_btn(lv_obj_t *parent, int x, const char *icon, const char *cap, lv_event_cb_t cb, bool accent)
 {
     lv_obj_t *b = lv_btn_create(parent);
-    lv_obj_set_size(b, 40, 44);
-    lv_obj_align(b, LV_ALIGN_TOP_LEFT, x, 234);
+    lv_obj_set_size(b, 44, 44);
+    lv_obj_align(b, LV_ALIGN_TOP_LEFT, x, 230);
     lv_obj_set_style_radius(b, 10, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_set_style_pad_all(b, 0, 0);
@@ -1276,6 +1277,7 @@ static void home_btn(lv_obj_t *parent, int x, const char *icon, const char *cap,
     lv_label_set_text(l, cap);
     lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(l, C_TEXT, 0);
+    lv_obj_set_style_text_letter_space(l, -1, 0);
     lv_obj_align(l, LV_ALIGN_BOTTOM_MID, 0, -3);
 }
 
@@ -1377,10 +1379,10 @@ static void build_ui()
     h_sig = home_stat(t0, 85, "Signal", &lv_font_montserrat_14);
     h_up = home_stat(t0, 162, "Uptime", &lv_font_montserrat_16);
 
-    home_btn(t0, 8, LV_SYMBOL_WIFI, "Scan", on_act_scan, false);
-    home_btn(t0, 54, LV_SYMBOL_REFRESH, "Ping", on_act_ping, false);
-    home_btn(t0, 100, LV_SYMBOL_CHARGE, "Speed", on_act_speed, false);
-    home_btn(t0, 146, LV_SYMBOL_OK, "Check", on_act_check, false);
+    home_btn(t0, 4, LV_SYMBOL_WIFI, "Scan", on_act_scan, false);
+    home_btn(t0, 51, LV_SYMBOL_REFRESH, "Ping", on_act_ping, false);
+    home_btn(t0, 98, LV_SYMBOL_CHARGE, "Speed", on_act_speed, false);
+    home_btn(t0, 145, LV_SYMBOL_OK, "Check", on_act_check, false);
     home_btn(t0, 192, LV_SYMBOL_DIRECTORY, "Git", on_act_github, true);
 
     // ---- Page 1: status list ----

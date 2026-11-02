@@ -1826,6 +1826,7 @@ void nettools_build_page(lv_obj_t *screen)
     lv_obj_set_size(p_box, 228, 206);
     lv_obj_set_pos(p_box, 6, 62);
     lv_obj_set_style_radius(p_box, 12, 0);
+    lv_obj_set_style_text_color(p_box, NT_TEXT, 0);
     lv_obj_set_style_bg_color(p_box, NT_CARD, 0);
     lv_obj_set_style_bg_opa(p_box, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(p_box, 0, 0);
