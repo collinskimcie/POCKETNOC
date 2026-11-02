@@ -1680,6 +1680,29 @@ static void on_menu_click(lv_event_t *e)
     open_tool((int)(intptr_t)lv_event_get_user_data(e));
 }
 
+extern bool ui_dark;   // defined in main.cpp
+
+static lv_color_t tool_group_color(const char *g)
+{
+    lv_palette_t p = LV_PALETTE_BLUE_GREY;
+    if (strcmp(g, "Wi-Fi") == 0) p = LV_PALETTE_LIGHT_BLUE;
+    else if (strcmp(g, "LAN") == 0) p = LV_PALETTE_GREEN;
+    else if (strcmp(g, "Internet") == 0) p = LV_PALETTE_ORANGE;
+    else if (strcmp(g, "Cloud") == 0) p = LV_PALETTE_PURPLE;
+    else if (strcmp(g, "IoT") == 0) p = LV_PALETTE_TEAL;
+    return lv_palette_main(p);
+}
+
+static const char *tool_group_icon(const char *g)
+{
+    if (strcmp(g, "Wi-Fi") == 0) return LV_SYMBOL_WIFI;
+    if (strcmp(g, "LAN") == 0) return LV_SYMBOL_HOME;
+    if (strcmp(g, "Internet") == 0) return LV_SYMBOL_GPS;
+    if (strcmp(g, "Cloud") == 0) return LV_SYMBOL_DIRECTORY;
+    if (strcmp(g, "IoT") == 0) return LV_SYMBOL_CHARGE;
+    return LV_SYMBOL_SETTINGS;
+}
+
 void nettools_build_menu(lv_obj_t *tile)
 {
     lv_obj_t *title = lv_label_create(tile);
@@ -1694,25 +1717,49 @@ void nettools_build_menu(lv_obj_t *tile)
     lv_obj_set_style_border_width(cont, 0, 0);
     lv_obj_set_style_pad_all(cont, 2, 0);
     lv_obj_set_style_pad_row(cont, 6, 0);
+    lv_obj_set_style_pad_column(cont, 6, 0);
     lv_obj_set_style_text_color(cont, NT_TEXT, 0);
-    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_set_scroll_dir(cont, LV_DIR_VER);
 
     const char *last = "";
     for (int i = 0; i < TOOL_COUNT; i++) {
-        if (strcmp(last, TOOLS[i].group) != 0) {
-            last = TOOLS[i].group;
+        const char *grp = TOOLS[i].group;
+        lv_color_t gc = tool_group_color(grp);
+        if (strcmp(last, grp) != 0) {
+            last = grp;
             lv_obj_t *h = lv_label_create(cont);
-            lv_label_set_text(h, last);
+            lv_label_set_text_fmt(h, "%s  %s", tool_group_icon(grp), grp);
+            lv_obj_set_width(h, LV_PCT(100));
             lv_obj_set_style_text_font(h, &lv_font_montserrat_16, 0);
-            lv_obj_set_style_text_color(h, lv_palette_main(LV_PALETTE_LIGHT_BLUE), 0);
+            lv_obj_set_style_text_color(h, gc, 0);
+            lv_obj_set_style_pad_top(h, 8, 0);
         }
         lv_obj_t *b = lv_btn_create(cont);
-        lv_obj_set_size(b, LV_PCT(100), 34);
+        lv_obj_set_size(b, 108, 54);
+        lv_obj_set_style_radius(b, 12, 0);
+        lv_obj_set_style_shadow_width(b, 0, 0);
+        lv_obj_set_style_pad_all(b, 0, 0);
+        lv_obj_set_style_bg_color(b, ui_dark ? lv_color_hex(0x232c37) : lv_color_hex(0xe4e8ec), 0);
+        lv_obj_set_style_bg_color(b, lv_palette_darken(LV_PALETTE_BLUE, 3), LV_STATE_PRESSED);
         lv_obj_add_event_cb(b, on_menu_click, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+
+        lv_obj_t *bar = lv_obj_create(b);            // coloured group bar on the left
+        lv_obj_set_size(bar, 4, 30);
+        lv_obj_align(bar, LV_ALIGN_LEFT_MID, 6, 0);
+        lv_obj_set_style_radius(bar, 2, 0);
+        lv_obj_set_style_border_width(bar, 0, 0);
+        lv_obj_set_style_bg_color(bar, gc, 0);
+        lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
+        lv_obj_clear_flag(bar, (lv_obj_flag_t)(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
+
         lv_obj_t *l = lv_label_create(b);
+        lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(l, 86);
+        lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(l, NT_TEXT, 0);
         lv_label_set_text(l, TOOLS[i].name);
-        lv_obj_center(l);
+        lv_obj_align(l, LV_ALIGN_LEFT_MID, 16, 0);
     }
 }
 
