@@ -1451,7 +1451,7 @@ static void tool_connect()
 #include <WiFiClientSecure.h>
 #include <Preferences.h>
 
-static bool gh_get(const String &path, const String &tok, JsonDocument &filter, JsonDocument &doc, String &err)
+static bool gh_get_once(const String &path, const String &tok, JsonDocument &filter, JsonDocument &doc, String &err)
 {
     if (ESP.getMaxAllocHeap() < 20000) { err = "Not enough free memory right now.\nRun it again in a moment."; return false; }
     WiFiClientSecure client;
@@ -1481,6 +1481,17 @@ static bool gh_get(const String &path, const String &tok, JsonDocument &filter, 
     http.end();
     if (e) { err = String("Could not read the reply: ") + e.c_str(); return false; }
     return true;
+}
+
+static bool gh_get(const String &path, const String &tok, JsonDocument &filter, JsonDocument &doc, String &err)
+{
+    for (int attempt = 0; attempt < 3; attempt++) {
+        doc.clear();
+        if (gh_get_once(path, tok, filter, doc, err)) return true;
+        if (err.startsWith("GitHub refused") || err.startsWith("User not found") || err.startsWith("Rate limited")) return false;
+        vTaskDelay(pdMS_TO_TICKS(1500));
+    }
+    return false;
 }
 
 static void tool_github()
