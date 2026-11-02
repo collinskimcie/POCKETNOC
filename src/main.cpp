@@ -644,7 +644,7 @@ static void handle_wifi_save()
 
 // ================= UI =================
 // Navigation: swipe sideways or use the tab bar.
-// Pages: 0 Home, 1 Status, 2 Tools, 3 Clock, 4 Info.
+// Pages: 0 Home, 1 Status, 2 Tools, 3 Info.
 // Tapping a service opens its detail page on top (full screen, < Back).
 // LVGL callbacks and *_nolock functions run with the LVGL lock already held.
 // ---- Saved UI settings (Settings page; kept in flash, survive reboots) ----
@@ -698,7 +698,7 @@ static void fmt_hm(char *buf, size_t n, const struct tm &ti)
     }
 }
 #define CLOCK_TZ "EAT-3"          // POSIX time zone: EAT-3 means UTC+3. Change for another zone.
-static const int TAB_COUNT = 5;
+static const int TAB_COUNT = 4;
 
 // Colours follow the saved theme (ui_dark). Changing the theme restarts the board.
 #define C_BG       (ui_dark ? lv_color_hex(0x0f141a) : lv_color_hex(0xffffff))
@@ -709,10 +709,10 @@ static const int TAB_COUNT = 5;
 
 static const char *TAB_TEXT[TAB_COUNT] = {
     LV_SYMBOL_HOME "\nHome", LV_SYMBOL_LIST "\nStatus", LV_SYMBOL_SETTINGS "\nTools",
-    LV_SYMBOL_BELL "\nClock", LV_SYMBOL_EYE_OPEN "\nInfo"
+    LV_SYMBOL_EYE_OPEN "\nInfo"
 };
 static const char *TAB_ICON[TAB_COUNT] = {
-    LV_SYMBOL_HOME, LV_SYMBOL_LIST, LV_SYMBOL_SETTINGS, LV_SYMBOL_BELL, LV_SYMBOL_EYE_OPEN
+    LV_SYMBOL_HOME, LV_SYMBOL_LIST, LV_SYMBOL_SETTINGS, LV_SYMBOL_EYE_OPEN
 };
 
 static const int HIST_LEN = 20;
@@ -741,12 +741,6 @@ static lv_obj_t *d_stats = nullptr;
 static lv_obj_t *d_chart = nullptr;
 static lv_chart_series_t *d_series = nullptr;
 static lv_obj_t *info_label = nullptr;
-static lv_obj_t *c_time = nullptr;
-static lv_obj_t *c_date = nullptr;
-static lv_obj_t *c_hand_h = nullptr;
-static lv_obj_t *c_hand_m = nullptr;
-static lv_obj_t *c_hand_s = nullptr;
-static lv_point_t pts_h[2], pts_m[2], pts_s[2];
 static lv_obj_t *h_arc = nullptr;
 static lv_obj_t *h_count = nullptr;
 static lv_obj_t *h_caption = nullptr;
@@ -852,41 +846,6 @@ static void update_info_nolock()
 static void on_info_timer(lv_timer_t *t)
 {
     update_info_nolock();
-}
-
-// ---- Clock page ----
-static void set_hand(lv_obj_t *hand, lv_point_t *pts, float deg, float len)
-{
-    float r = deg * 0.0174533f;
-    pts[0].x = 100;
-    pts[0].y = 100;
-    pts[1].x = (lv_coord_t)(100 + len * sinf(r));
-    pts[1].y = (lv_coord_t)(100 - len * cosf(r));
-    lv_line_set_points(hand, pts, 2);
-}
-
-static void on_clock_timer(lv_timer_t *t)
-{
-    struct tm ti;
-    if (!getLocalTime(&ti, 0)) {
-        lv_label_set_text(c_time, "--:--:--");
-        lv_label_set_text(c_date, "Syncing time...");
-        return;
-    }
-    char buf[32];
-    if (ui_set.clock24h) {
-        snprintf(buf, sizeof(buf), "%02d:%02d:%02d", ti.tm_hour, ti.tm_min, ti.tm_sec);
-    } else {
-        int h12 = ti.tm_hour % 12;
-        if (h12 == 0) h12 = 12;
-        snprintf(buf, sizeof(buf), "%d:%02d:%02d %s", h12, ti.tm_min, ti.tm_sec, ti.tm_hour < 12 ? "AM" : "PM");
-    }
-    lv_label_set_text(c_time, buf);
-    strftime(buf, sizeof(buf), "%a %d %b %Y", &ti);
-    lv_label_set_text(c_date, buf);
-    set_hand(c_hand_s, pts_s, ti.tm_sec * 6.0f, 88);
-    set_hand(c_hand_m, pts_m, ti.tm_min * 6.0f + ti.tm_sec * 0.1f, 76);
-    set_hand(c_hand_h, pts_h, (ti.tm_hour % 12) * 30.0f + ti.tm_min * 0.5f, 52);
 }
 
 // ---- Navigation ----
@@ -1324,9 +1283,8 @@ static void build_ui()
     lv_obj_t *t0 = lv_tileview_add_tile(tv, 0, 0, LV_DIR_RIGHT);
     lv_obj_t *t1 = lv_tileview_add_tile(tv, 1, 0, both);
     lv_obj_t *t2 = lv_tileview_add_tile(tv, 2, 0, both);
-    lv_obj_t *t3 = lv_tileview_add_tile(tv, 3, 0, both);
-    lv_obj_t *t4 = lv_tileview_add_tile(tv, 4, 0, LV_DIR_LEFT);
-    paint(t0); paint(t1); paint(t2); paint(t3); paint(t4);
+    lv_obj_t *t3 = lv_tileview_add_tile(tv, 3, 0, LV_DIR_LEFT);
+    paint(t0); paint(t1); paint(t2); paint(t3);
 
     // ---- Page 0: Home dashboard ----
     lv_obj_t *h_name = lv_label_create(t0);
@@ -1470,75 +1428,13 @@ static void build_ui()
     // ---- Page 2: tools menu (see nettools.cpp) ----
     nettools_build_menu(t2);
 
-    // ---- Page 3: clock ----
-    lv_obj_t *face = lv_obj_create(t3);
-    lv_obj_set_size(face, 200, 200);
-    lv_obj_align(face, LV_ALIGN_TOP_MID, 0, 8);
-    lv_obj_set_style_radius(face, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_pad_all(face, 0, 0);
-    lv_obj_set_style_border_width(face, 0, 0);
-    lv_obj_set_style_outline_width(face, 3, 0);
-    lv_obj_set_style_outline_color(face, lv_palette_main(LV_PALETTE_BLUE), 0);
-    lv_obj_set_style_bg_color(face, C_CARD, 0);
-    lv_obj_set_style_bg_opa(face, LV_OPA_COVER, 0);
-    lv_obj_clear_flag(face, (lv_obj_flag_t)(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
-
-    for (int k = 0; k < 12; k++) {
-        int sz = (k % 3 == 0) ? 10 : 6;
-        float a = k * 30 * 0.0174533f;
-        int x = (int)(100 + 88 * sinf(a));
-        int y = (int)(100 - 88 * cosf(a));
-        lv_obj_t *tick = lv_obj_create(face);
-        lv_obj_set_size(tick, sz, sz);
-        lv_obj_set_style_radius(tick, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_border_width(tick, 0, 0);
-        lv_obj_set_style_bg_color(tick, C_TEXT, 0);
-        lv_obj_clear_flag(tick, (lv_obj_flag_t)(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
-        lv_obj_set_pos(tick, x - sz / 2, y - sz / 2);
-    }
-
-    lv_obj_t *hands[3];
-    lv_color_t hand_col[3] = {C_TEXT, C_TEXT, lv_palette_main(LV_PALETTE_RED)};
-    int hand_w[3] = {6, 4, 2};
-    for (int k = 0; k < 3; k++) {
-        hands[k] = lv_line_create(face);
-        lv_obj_set_size(hands[k], 200, 200);
-        lv_obj_set_pos(hands[k], 0, 0);
-        lv_obj_set_style_line_width(hands[k], hand_w[k], 0);
-        lv_obj_set_style_line_color(hands[k], hand_col[k], 0);
-        lv_obj_set_style_line_rounded(hands[k], true, 0);
-        lv_obj_clear_flag(hands[k], LV_OBJ_FLAG_CLICKABLE);
-    }
-    c_hand_h = hands[0];
-    c_hand_m = hands[1];
-    c_hand_s = hands[2];
-
-    lv_obj_t *cap = lv_obj_create(face);
-    lv_obj_set_size(cap, 10, 10);
-    lv_obj_set_style_radius(cap, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_width(cap, 0, 0);
-    lv_obj_set_style_bg_color(cap, lv_palette_main(LV_PALETTE_RED), 0);
-    lv_obj_clear_flag(cap, (lv_obj_flag_t)(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
-    lv_obj_set_pos(cap, 95, 95);
-
-    c_time = lv_label_create(t3);
-    lv_obj_set_style_text_font(c_time, &lv_font_montserrat_30, 0);
-    lv_label_set_text(c_time, "--:--:--");
-    lv_obj_align(c_time, LV_ALIGN_TOP_MID, 0, 214);
-
-    c_date = lv_label_create(t3);
-    lv_obj_set_style_text_font(c_date, &lv_font_montserrat_16, 0);
-    lv_label_set_text(c_date, "Syncing time...");
-    lv_obj_align(c_date, LV_ALIGN_TOP_MID, 0, 250);
-    lv_timer_create(on_clock_timer, 1000, nullptr);
-
-    // ---- Page 4: device info ----
-    lv_obj_t *info_title = lv_label_create(t4);
+    // ---- Page 3: device info ----
+    lv_obj_t *info_title = lv_label_create(t3);
     lv_label_set_text(info_title, "Device Info");
     lv_obj_set_style_text_font(info_title, &lv_font_montserrat_30, 0);
     lv_obj_align(info_title, LV_ALIGN_TOP_MID, 0, 6);
 
-    info_label = lv_label_create(t4);
+    info_label = lv_label_create(t3);
     lv_obj_set_style_text_font(info_label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_line_space(info_label, 4, 0);
     lv_obj_set_width(info_label, 224);
@@ -1558,8 +1454,8 @@ static void build_ui()
     lv_obj_clear_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
     for (int k = 0; k < TAB_COUNT; k++) {
         lv_obj_t *b = lv_btn_create(bar);
-        lv_obj_set_size(b, 48, 40);
-        lv_obj_set_pos(b, k * 48, 0);
+        lv_obj_set_size(b, 60, 40);
+        lv_obj_set_pos(b, k * 60, 0);
         lv_obj_set_style_radius(b, 0, 0);
         lv_obj_set_style_pad_all(b, 0, 0);
         lv_obj_set_style_bg_opa(b, LV_OPA_TRANSP, 0);
