@@ -1140,16 +1140,26 @@ static void on_set_clock(lv_event_t *e)
 
 static void settings_row(lv_obj_t *parent, const char *text, int y)
 {
+    lv_obj_t *c = lv_obj_create(parent);          // rounded card behind the row
+    lv_obj_set_size(c, 224, 40);
+    lv_obj_align(c, LV_ALIGN_TOP_LEFT, 8, y - 3);
+    lv_obj_set_style_radius(c, 12, 0);
+    lv_obj_set_style_border_width(c, 0, 0);
+    lv_obj_set_style_pad_all(c, 0, 0);
+    lv_obj_set_style_bg_color(c, C_CARD, 0);
+    lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(c, (lv_obj_flag_t)(LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE));
+
     lv_obj_t *l = lv_label_create(parent);
     lv_label_set_text(l, text);
     lv_obj_set_style_text_font(l, &lv_font_montserrat_16, 0);
-    lv_obj_align(l, LV_ALIGN_TOP_LEFT, 10, y + 8);
+    lv_obj_align(l, LV_ALIGN_TOP_LEFT, 20, y + 8);
 }
 
 static void settings_switch(lv_obj_t *parent, int y, bool on, lv_event_cb_t cb)
 {
     lv_obj_t *s = lv_switch_create(parent);
-    lv_obj_align(s, LV_ALIGN_TOP_RIGHT, -10, y + 4);
+    lv_obj_align(s, LV_ALIGN_TOP_RIGHT, -18, y + 4);
     if (on) lv_obj_add_state(s, LV_STATE_CHECKED);
     lv_obj_add_event_cb(s, cb, LV_EVENT_VALUE_CHANGED, nullptr);
 }
@@ -1185,12 +1195,12 @@ static void settings_build_page()
     settings_switch(spage, y, ui_set.buzzerMute, on_set_mute);
     y += 46;
     settings_row(spage, "Auto-return", y);
-    lv_obj_t *rb = make_button(spage, "", 84, 146, y, on_set_return, nullptr);
+    lv_obj_t *rb = make_button(spage, "", 76, 148, y, on_set_return, nullptr);
     s_return_lbl = lv_obj_get_child(rb, 0);
     set_return_text();
     y += 46;
     settings_row(spage, "Clock", y);
-    lv_obj_t *cb = make_button(spage, "", 84, 146, y, on_set_clock, nullptr);
+    lv_obj_t *cb = make_button(spage, "", 76, 148, y, on_set_clock, nullptr);
     s_clock_lbl = lv_obj_get_child(cb, 0);
     set_clock_text();
 
@@ -1484,30 +1494,54 @@ static void build_ui()
     lv_obj_add_flag(dpage, LV_OBJ_FLAG_HIDDEN);
 
     make_button(dpage, "< Back", 84, 8, 6, on_back_click, nullptr);
+    lv_obj_t *d_title = lv_label_create(dpage);
+    lv_label_set_text(d_title, "Service");
+    lv_obj_set_style_text_font(d_title, &lv_font_montserrat_16, 0);
+    lv_obj_align(d_title, LV_ALIGN_TOP_RIGHT, -12, 14);
 
-    d_name = lv_label_create(dpage);
+    lv_obj_t *d_card = lv_obj_create(dpage);      // name, status, URL
+    lv_obj_set_size(d_card, 224, 100);
+    lv_obj_align(d_card, LV_ALIGN_TOP_LEFT, 8, 44);
+    home_style_card(d_card, 14);
+
+    d_name = lv_label_create(d_card);
     lv_obj_set_style_text_font(d_name, &lv_font_montserrat_16, 0);
     lv_label_set_long_mode(d_name, LV_LABEL_LONG_DOT);
-    lv_obj_set_size(d_name, 224, 20);
-    lv_obj_align(d_name, LV_ALIGN_TOP_LEFT, 8, 42);
+    lv_obj_set_size(d_name, 200, 20);
+    lv_obj_align(d_name, LV_ALIGN_TOP_LEFT, 12, 8);
 
-    d_status = lv_label_create(dpage);
+    d_status = lv_label_create(d_card);
     lv_obj_set_style_text_font(d_status, &lv_font_montserrat_30, 0);
-    lv_obj_align(d_status, LV_ALIGN_TOP_LEFT, 8, 62);
+    lv_obj_align(d_status, LV_ALIGN_TOP_LEFT, 12, 28);
 
-    d_url = lv_label_create(dpage);
+    d_url = lv_label_create(d_card);
+    lv_obj_set_style_text_font(d_url, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(d_url, lv_palette_main(LV_PALETTE_GREY), 0);
     lv_label_set_long_mode(d_url, LV_LABEL_LONG_DOT);
-    lv_obj_set_size(d_url, 224, 34);
-    lv_obj_align(d_url, LV_ALIGN_TOP_LEFT, 8, 104);
+    lv_obj_set_size(d_url, 200, 32);
+    lv_obj_align(d_url, LV_ALIGN_TOP_LEFT, 12, 64);
 
-    d_stats = lv_label_create(dpage);
-    lv_obj_set_width(d_stats, 224);
+    lv_obj_t *d_card2 = lv_obj_create(dpage);     // last / average / uptime
+    lv_obj_set_size(d_card2, 224, 74);
+    lv_obj_align(d_card2, LV_ALIGN_TOP_LEFT, 8, 152);
+    home_style_card(d_card2, 14);
+
+    d_stats = lv_label_create(d_card2);
+    lv_obj_set_style_text_font(d_stats, &lv_font_montserrat_14, 0);
+    lv_obj_set_width(d_stats, 200);
     lv_obj_set_style_text_line_space(d_stats, 4, 0);
-    lv_obj_align(d_stats, LV_ALIGN_TOP_LEFT, 8, 142);
+    lv_obj_align(d_stats, LV_ALIGN_TOP_LEFT, 12, 8);
+
+    lv_obj_t *d_cap = lv_label_create(dpage);
+    lv_label_set_text(d_cap, "Response time (ms)");
+    lv_obj_set_style_text_font(d_cap, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(d_cap, lv_palette_main(LV_PALETTE_GREY), 0);
+    lv_obj_align(d_cap, LV_ALIGN_TOP_LEFT, 12, 232);
 
     d_chart = lv_chart_create(dpage);
-    lv_obj_set_size(d_chart, 224, 62);
-    lv_obj_align(d_chart, LV_ALIGN_TOP_LEFT, 8, 204);
+    lv_obj_set_size(d_chart, 224, 60);
+    lv_obj_align(d_chart, LV_ALIGN_TOP_LEFT, 8, 252);
+    lv_obj_set_style_radius(d_chart, 10, 0);
     lv_obj_set_style_bg_color(d_chart, C_CHART_BG, 0);
     lv_obj_set_style_border_width(d_chart, 0, 0);
     lv_obj_set_style_line_color(d_chart, C_GRID, LV_PART_MAIN);
