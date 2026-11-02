@@ -468,6 +468,72 @@ static void handle_wifiscan()
     server.send(200, "application/json", json);
 }
 
+// POST /wificonnect: try the network now (the setup network stays up); save it only if it connects.
+static void handle_wificonnect()
+{
+    if (!authed()) return;
+    String ssid = server.arg("ssid");
+    String pw = server.arg("pw");
+    ssid.trim();
+    pw.trim();
+    if (ssid.length() < 1 || ssid.length() > 32 || ssid.indexOf(',') >= 0 || ssid.indexOf('\n') >= 0 ||
+        pw.indexOf('\n') >= 0 || pw.indexOf('\r') >= 0 || (pw.length() != 0 && (pw.length() < 8 || pw.length() > 63))) {
+        server.send(200, "application/json", "{\"ok\":false,\"why\":\"invalid name or password (password: 8 to 63 characters)\"}");
+        return;
+    }
+    if (WiFi.getMode() == WIFI_AP) WiFi.mode(WIFI_AP_STA);
+    WiFi.begin(ssid.c_str(), pw.length() ? pw.c_str() : nullptr);
+    uint32_t t0 = millis();
+    wl_status_t st = WiFi.status();
+    while (st != WL_CONNECTED && st != WL_CONNECT_FAILED && millis() - t0 < 15000) {
+        delay(250);
+        st = WiFi.status();
+    }
+    if (st == WL_CONNECTED) {
+        String ip = WiFi.localIP().toString();
+        // keep at most 4 older networks (without a duplicate of this one), then add this one
+        String keep[5];
+        int k = 0, pos = 0, len = raw_wifi.length();
+        while (pos < len) {
+            int eol = raw_wifi.indexOf('\n', pos);
+            if (eol < 0) eol = len;
+            String line = raw_wifi.substring(pos, eol);
+            pos = eol + 1;
+            line.trim();
+            if (line.length() == 0) continue;
+            int comma = line.indexOf(',');
+            String nm = comma < 0 ? line : line.substring(0, comma);
+            nm.trim();
+            if (nm == ssid) continue;
+            if (k == 4) {
+                for (int j = 0; j < 3; j++) keep[j] = keep[j + 1];
+                keep[3] = line;
+            } else {
+                keep[k++] = line;
+            }
+        }
+        keep[k++] = pw.length() ? ssid + ", " + pw : ssid;
+        String joined;
+        for (int j = 0; j < k; j++) {
+            if (j) joined += '\n';
+            joined += keep[j];
+        }
+        prefs.begin("statusboard", false);
+        prefs.putString("wifi", joined);
+        prefs.end();
+        raw_wifi = joined;
+        server.send(200, "application/json", "{\"ok\":true,\"ip\":\"" + ip + "\"}");
+        delay(1500);
+        ESP.restart();
+        return;
+    }
+    const char *why = st == WL_CONNECT_FAILED ? "wrong password"
+                    : st == WL_NO_SSID_AVAIL ? "network not found"
+                    : "no answer (wrong password or weak signal)";
+    WiFi.disconnect(false, false);
+    server.send(200, "application/json", String("{\"ok\":false,\"why\":\"") + why + "\"}");
+}
+
 static void handle_wifi_page()
 {
     if (!authed()) return;
@@ -479,35 +545,43 @@ static void handle_wifi_page()
                     "max 5). The board joins the strongest saved network in range. The network in secrets.h is always "
                     "tried too. Saving restarts the board.</p>"
                     R"WIFI(<p><button type=button id=scanbtn style='padding:8px 16px'>Scan for networks</button></p>
-                    <div id=scanres style='margin:8px 0'></div>
-                    <script>
-                    var b=document.getElementById('scanbtn'),r=document.getElementById('scanres'),t=document.getElementsByName('nets')[0];
-                    b.onclick=function(){
-                     b.disabled=true;r.textContent='Scanning... (about 5 seconds, this page may pause)';
-                     fetch('/wifiscan').then(function(x){if(!x.ok)throw 0;return x.json();}).then(function(list){
-                      r.textContent='';
-                      if(!list.length){r.textContent='No networks found.';}
-                      list.forEach(function(n){
-                       var d=document.createElement('button');d.type='button';
-                       d.style.cssText='display:block;width:100%;text-align:left;padding:8px;margin:4px 0';
-                       d.textContent=n.s+'   '+n.r+' dBm'+(n.o?'  (open)':'');
-                       d.onclick=function(){
-                        var lines=t.value.split('\n'),found=-1;
-                        for(var i=0;i<lines.length;i++){if(lines[i].split(',')[0].trim()===n.s){found=i;break;}}
-                        var pos;
-                        if(found<0){
-                         t.value=(t.value.trim()?t.value.replace(/\s+$/,'')+'\n':'')+n.s+(n.o?'':', ');
-                         pos=t.value.length;
-                        }else{
-                         pos=lines.slice(0,found+1).join('\n').length;
-                        }
-                        t.focus();t.setSelectionRange(pos,pos);
-                       };
-                       r.appendChild(d);
-                      });
-                     }).catch(function(){r.textContent='Scan failed. Try again.';}).then(function(){b.disabled=false;});
-                    };
-                    </script>)WIFI"
+<div id=scanres style='margin:8px 0'></div>
+<div id=connbox style='display:none;border:1px solid #888;padding:10px;margin:8px 0'>
+<b id=connname></b><br>
+<span id=connpwwrap>Password: <input id=connpw type=password style='width:60%'></span><br>
+<button type=button id=connbtn style='margin-top:8px;padding:8px 16px'>Connect and save</button>
+<div id=connmsg style='margin-top:8px'></div></div>
+<script>
+var b=document.getElementById('scanbtn'),r=document.getElementById('scanres'),box=document.getElementById('connbox'),
+nm=document.getElementById('connname'),pwi=document.getElementById('connpw'),pww=document.getElementById('connpwwrap'),
+cb=document.getElementById('connbtn'),msg=document.getElementById('connmsg'),cur=null;
+b.onclick=function(){
+ b.disabled=true;r.textContent='Scanning... (about 5 seconds, this page may pause)';
+ fetch('/wifiscan').then(function(x){if(!x.ok)throw 0;return x.json();}).then(function(list){
+  r.textContent='';
+  if(!list.length){r.textContent='No networks found.';}
+  list.forEach(function(n){
+   var d=document.createElement('button');d.type='button';
+   d.style.cssText='display:block;width:100%;text-align:left;padding:8px;margin:4px 0';
+   d.textContent=n.s+'   '+n.r+' dBm'+(n.o?'  (open)':'');
+   d.onclick=function(){cur=n;nm.textContent=n.s;pwi.value='';pww.style.display=n.o?'none':'';msg.textContent='';
+    cb.disabled=false;box.style.display='block';if(!n.o)pwi.focus();};
+   r.appendChild(d);
+  });
+ }).catch(function(){r.textContent='Scan failed. Try again.';}).then(function(){b.disabled=false;});
+};
+cb.onclick=function(){
+ if(!cur)return;
+ if(!cur.o&&(pwi.value.length<8||pwi.value.length>63)){msg.textContent='The password must be 8 to 63 characters.';return;}
+ cb.disabled=true;msg.textContent='Connecting to '+cur.s+'... (up to 15 seconds)';
+ var body='ssid='+encodeURIComponent(cur.s)+'&pw='+encodeURIComponent(cur.o?'':pwi.value);
+ fetch('/wificonnect',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body})
+ .then(function(x){return x.json();}).then(function(j){
+  if(j.ok){msg.textContent='Connected to '+cur.s+' ('+j.ip+') and saved. The board is restarting. Rejoin your normal Wi-Fi and open http://pocketnoc.local/ or http://'+j.ip+'/';}
+  else{msg.textContent='Could not connect: '+j.why+'. Nothing was saved.';cb.disabled=false;}
+ }).catch(function(){msg.textContent='No answer from the board. If the PocketNOC-Setup network has disappeared, the board probably connected and saved: rejoin your normal Wi-Fi and open http://pocketnoc.local/ . Otherwise reconnect to PocketNOC-Setup and try again.';cb.disabled=false;});
+};
+</script>)WIFI"
                     "<form method=POST action=/wifi>"
                     "<textarea name=nets rows=6 style='width:100%;font-family:monospace'>");
     page += html_escape(raw_wifi);
@@ -2324,6 +2398,7 @@ void loop()
             server.on("/wifi", HTTP_GET, handle_wifi_page);
             server.on("/wifi", HTTP_POST, handle_wifi_save);
             server.on("/wifiscan", HTTP_GET, handle_wifiscan);
+            server.on("/wificonnect", HTTP_POST, handle_wificonnect);
             server.on("/tools", HTTP_GET, handle_tools);
             server.on("/settings", HTTP_POST, handle_settings_save);
             server.on("/export", HTTP_GET, handle_export);
