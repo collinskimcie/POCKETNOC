@@ -1419,6 +1419,147 @@ static void tool_connect()
     out_set(result);
 }
 
+// ---------- GitHub: profile, recent repos and recent activity ----------
+#include <ArduinoJson.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <Preferences.h>
+
+static bool gh_get(const String &path, const String &tok, JsonDocument &filter, JsonDocument &doc, String &err)
+{
+    if (ESP.getMaxAllocHeap() < 20000) { err = "Not enough free memory right now.\nRun it again in a moment."; return false; }
+    WiFiClientSecure client;
+    client.setInsecure();   // certificates are not verified (as for the service checks)
+    client.setHandshakeTimeout(8);
+    HTTPClient http;
+    http.useHTTP10(true);   // plain body, no chunked encoding
+    http.setTimeout(8000);
+    http.setConnectTimeout(8000);
+    http.setUserAgent("PocketNOC");
+    if (!http.begin(client, String("https://api.github.com") + path)) { err = "Bad request"; return false; }
+    http.addHeader("Accept", "application/vnd.github+json");
+    if (tok.length()) http.addHeader("Authorization", String("Bearer ") + tok);
+    int code = http.GET();
+    if (code != 200) {
+        http.end();
+        if (code == 401) err = "GitHub refused the token (401).";
+        else if (code == 404) err = "User not found (404).";
+        else if (code == 403 || code == 429) err = "Rate limited or forbidden (" + String(code) + ").";
+        else if (code < 0) err = "No connection to GitHub.";
+        else err = "GitHub answered HTTP " + String(code) + ".";
+        return false;
+    }
+    DeserializationError e = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
+    http.end();
+    if (e) { err = String("Could not read the reply: ") + e.c_str(); return false; }
+    return true;
+}
+
+static void tool_github()
+{
+    if (WiFi.status() != WL_CONNECTED) { out_set("Wi-Fi not connected"); return; }
+    String user, tok;
+    {
+        Preferences p;
+        p.begin("github", true);
+        user = p.getString("user", "");
+        tok = p.getString("tok", "");
+        p.end();
+    }
+    if (user.length() == 0) {
+        out_set("No GitHub username yet.\nOpen the board's web page,\nthen More tools, then GitHub.");
+        return;
+    }
+    String out, err;
+    char line[112];
+
+    out_set("Loading profile...");
+    {
+        JsonDocument filter, doc;
+        filter["login"] = true;
+        filter["name"] = true;
+        filter["public_repos"] = true;
+        filter["followers"] = true;
+        filter["following"] = true;
+        if (!gh_get(String("/users/") + user, tok, filter, doc, err)) { out_set(err); return; }
+        const char *login = doc["login"] | "?";
+        const char *nm = doc["name"] | "";
+        snprintf(line, sizeof(line), "%s\n@%s   repos %d\nfollowers %d   following %d\n\n",
+                 nm[0] ? nm : login, login, (int)(doc["public_repos"] | 0),
+                 (int)(doc["followers"] | 0), (int)(doc["following"] | 0));
+        out += line;
+    }
+    if (cancelled()) return;
+
+    out_set(out + "Loading repos...");
+    {
+        JsonDocument filter, doc;
+        filter[0]["name"] = true;
+        filter[0]["language"] = true;
+        filter[0]["stargazers_count"] = true;
+        filter[0]["pushed_at"] = true;
+        filter[0]["private"] = true;
+        String path = tok.length() ? String("/user/repos?affiliation=owner&sort=pushed&per_page=6")
+                                   : String("/users/") + user + "/repos?sort=pushed&per_page=6";
+        if (!gh_get(path, tok, filter, doc, err)) {
+            out += "Repos: " + err + "\n\n";
+        } else {
+            out += "Recent repos\n";
+            for (JsonObject r : doc.as<JsonArray>()) {
+                const char *name = r["name"] | "?";
+                const char *lang = r["language"] | "-";
+                const char *pushed = r["pushed_at"] | "";
+                snprintf(line, sizeof(line), "%.18s%s %.8s *%d %.5s\n", name, (r["private"] | false) ? " (p)" : "",
+                         lang, (int)(r["stargazers_count"] | 0), strlen(pushed) > 5 ? pushed + 5 : "");
+                out += line;
+            }
+            out += "\n";
+        }
+    }
+    if (cancelled()) return;
+
+    out_set(out + "Loading activity...");
+    {
+        JsonDocument filter, doc;
+        filter[0]["type"] = true;
+        filter[0]["created_at"] = true;
+        filter[0]["repo"]["name"] = true;
+        filter[0]["payload"]["commits"][0]["message"] = true;
+        if (!gh_get(String("/users/") + user + "/events?per_page=10", tok, filter, doc, err)) {
+            out += "Activity: " + err + "\n";
+        } else {
+            out += "Recent activity\n";
+            int shown = 0;
+            for (JsonObject ev : doc.as<JsonArray>()) {
+                if (++shown > 8) break;
+                const char *type = ev["type"] | "";
+                const char *repo = ev["repo"]["name"] | "";
+                const char *slash = strchr(repo, '/');
+                if (slash) repo = slash + 1;
+                const char *at = ev["created_at"] | "";
+                const char *date = strlen(at) > 5 ? at + 5 : "";
+                if (strcmp(type, "PushEvent") == 0) {
+                    const char *msg = ev["payload"]["commits"][0]["message"] | "";
+                    char m[30];
+                    size_t n = 0;
+                    while (msg[n] && msg[n] != '\n' && n < 26) { m[n] = msg[n]; n++; }
+                    m[n] = 0;
+                    snprintf(line, sizeof(line), "%.5s %.14s: %s\n", date, repo, m);
+                } else {
+                    char t[24];
+                    strlcpy(t, type, sizeof(t));
+                    size_t tl = strlen(t);
+                    if (tl > 5 && strcmp(t + tl - 5, "Event") == 0) t[tl - 5] = 0;
+                    snprintf(line, sizeof(line), "%.5s %s %.14s\n", date, t, repo);
+                }
+                out += line;
+            }
+            if (shown == 0) out += "(nothing recent)\n";
+        }
+    }
+    out_set(out);
+}
+
 static const ToolDef TOOLS[] = {
     {"Wi-Fi", "Connect", tool_connect, 0, false,
      "Pick a network, type the password, connect and save it"},
@@ -1456,6 +1597,8 @@ static const ToolDef TOOLS[] = {
      "Your address as the internet sees it, with the provider."},
     {"Internet", "HTTP timing", tool_http, 0, false,
      "Splits one request into DNS, TCP, TLS and wait time. Uses url= or your first service. Tap Run."},
+    {"Cloud", "GitHub", tool_github, 0, false,
+     "Your GitHub profile, repos and recent activity"},
     {"IoT", "MQTT inspector", tool_mqtt, 0, false,
      "Live messages from your broker. Set mqtt=, mquser=, mqpass= and mqtopic= in Tools settings. Tap Run."},
     {"IoT", "Bluetooth scan", tool_ble, 0, false,

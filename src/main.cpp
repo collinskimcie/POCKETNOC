@@ -2252,6 +2252,53 @@ static int arg_int(const char *name, int lo, int hi, int def)
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
+// ---- GitHub settings (username and optional read-only token), used by Tools > GitHub ----
+static String gh_form()
+{
+    String user;
+    bool hasTok;
+    Preferences gp;
+    gp.begin("github", true);
+    user = gp.getString("user", "");
+    hasTok = gp.getString("tok", "").length() > 0;
+    gp.end();
+    String f = F("<form method=POST action=/github><p>Username: <input name=u value='");
+    f += html_escape(user);
+    f += F("'><br>Token (read-only, optional): <input name=t type=password placeholder='");
+    f += hasTok ? "saved: leave blank to keep" : "none";
+    f += F("'><br><label><input type=checkbox name=c value=1> remove the saved token</label></p>"
+           "<p>Shown on the board under Tools, then GitHub. Without a token only public data shows. "
+           "The token is stored on the board as plain text: use a read-only token with an expiry date.</p>"
+           "<button type=submit style='padding:8px 16px'>Save GitHub</button></form>");
+    return f;
+}
+
+static void handle_github_save()
+{
+    if (!authed()) return;
+    String u = server.arg("u"), t = server.arg("t");
+    u.trim();
+    t.trim();
+    bool bad = u.length() > 39 || t.length() > 255;
+    for (unsigned i = 0; i < u.length(); i++) {
+        char c = u[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-')) bad = true;
+    }
+    for (unsigned i = 0; i < t.length(); i++) if (t[i] <= ' ') bad = true;
+    if (bad) {
+        server.send(400, "text/plain", "Username: letters, digits and '-' only (max 39). Token: no spaces (max 255).");
+        return;
+    }
+    Preferences gp;
+    gp.begin("github", false);
+    gp.putString("user", u);
+    if (server.arg("c") == "1") gp.remove("tok");
+    else if (t.length()) gp.putString("tok", t);
+    gp.end();
+    server.sendHeader("Location", "/tools");
+    server.send(303);
+}
+
 static void handle_tools()
 {
     if (!authed()) return;
@@ -2281,7 +2328,9 @@ static void handle_tools()
               "<h3>Services</h3><p><a href=/export>Download the services list</a> "
               "(to import, paste it into the Services box on the main page and save).</p>"
               "<h3>Events</h3><p><a href=/log>Recent alerts and failed checks</a></p>"
-              "<h3>Wake-on-LAN</h3><form method=POST action=/wol>MAC address: "
+              "<h3>GitHub</h3>");
+    page += gh_form();
+    page += F("<h3>Wake-on-LAN</h3><form method=POST action=/wol>MAC address: "
               "<input name=mac placeholder='AA:BB:CC:DD:EE:FF' value='");
     page += html_escape(mac);
     page += F("'> <button type=submit style='padding:8px 16px'>Send</button></form>"
@@ -2485,6 +2534,7 @@ void loop()
             server.on("/export", HTTP_GET, handle_export);
             server.on("/log", HTTP_GET, handle_log);
             server.on("/wol", HTTP_POST, handle_wol);
+            server.on("/github", HTTP_POST, handle_github_save);
             server.begin();
             serverStarted = true;
             ArduinoOTA.setHostname(DEVICE_HOST);
