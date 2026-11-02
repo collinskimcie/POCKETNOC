@@ -37,6 +37,7 @@ extern bool ui_dark;   // set in main.cpp from the saved theme
 #define NT_BG       (ui_dark ? lv_color_hex(0x0f141a) : lv_color_hex(0xffffff))
 #define NT_TEXT     (ui_dark ? lv_color_hex(0xe6ebf0) : lv_color_hex(0x1c2530))
 #define NT_CHART_BG (ui_dark ? lv_color_hex(0x1a222b) : lv_color_hex(0xf2f4f6))
+#define NT_CARD     (ui_dark ? lv_color_hex(0x232c37) : lv_color_hex(0xe4e8ec))
 #define NT_GRID     (ui_dark ? lv_color_hex(0x364352) : lv_color_hex(0xd0d6dc))
 
 // ---------- settings from the web config page ----------
@@ -1779,6 +1780,10 @@ void nettools_build_page(lv_obj_t *screen)
 
     lv_obj_t *back = lv_btn_create(p_page);
     lv_obj_set_size(back, 84, 30);
+    lv_obj_set_style_radius(back, 10, 0);
+    lv_obj_set_style_shadow_width(back, 0, 0);
+    lv_obj_set_style_bg_color(back, NT_CARD, 0);
+    lv_obj_set_style_bg_color(back, lv_palette_darken(LV_PALETTE_BLUE, 3), LV_STATE_PRESSED);
     lv_obj_align(back, LV_ALIGN_TOP_LEFT, 6, 4);
     lv_obj_add_event_cb(back, on_back_click, LV_EVENT_CLICKED, nullptr);
     lv_obj_t *bl = lv_label_create(back);
@@ -1787,10 +1792,15 @@ void nettools_build_page(lv_obj_t *screen)
 
     lv_obj_t *run = lv_btn_create(p_page);
     lv_obj_set_size(run, 84, 30);
+    lv_obj_set_style_radius(run, 10, 0);
+    lv_obj_set_style_shadow_width(run, 0, 0);
+    lv_obj_set_style_bg_color(run, lv_palette_darken(LV_PALETTE_BLUE, 2), 0);
+    lv_obj_set_style_bg_color(run, lv_palette_darken(LV_PALETTE_BLUE, 3), LV_STATE_PRESSED);
     lv_obj_align(run, LV_ALIGN_TOP_RIGHT, -6, 4);
     lv_obj_add_event_cb(run, on_run_click, LV_EVENT_CLICKED, nullptr);
     p_run_lbl = lv_label_create(run);
     lv_label_set_text(p_run_lbl, "Run");
+    lv_obj_set_style_text_color(p_run_lbl, lv_color_white(), 0);
     lv_obj_center(p_run_lbl);
 
     p_title = lv_label_create(p_page);
@@ -1803,6 +1813,7 @@ void nettools_build_page(lv_obj_t *screen)
     p_chart = lv_chart_create(p_page);
     lv_obj_set_size(p_chart, 228, 70);
     lv_obj_align(p_chart, LV_ALIGN_TOP_LEFT, 6, 62);
+    lv_obj_set_style_radius(p_chart, 10, 0);
     lv_obj_set_style_bg_color(p_chart, NT_CHART_BG, 0);
     lv_obj_set_style_border_width(p_chart, 0, 0);
     lv_obj_set_style_line_color(p_chart, NT_GRID, LV_PART_MAIN);
@@ -1814,13 +1825,15 @@ void nettools_build_page(lv_obj_t *screen)
     p_box = lv_obj_create(p_page);
     lv_obj_set_size(p_box, 228, 206);
     lv_obj_set_pos(p_box, 6, 62);
-    lv_obj_set_style_bg_opa(p_box, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_radius(p_box, 12, 0);
+    lv_obj_set_style_bg_color(p_box, NT_CARD, 0);
+    lv_obj_set_style_bg_opa(p_box, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(p_box, 0, 0);
-    lv_obj_set_style_pad_all(p_box, 2, 0);
+    lv_obj_set_style_pad_all(p_box, 6, 0);
     lv_obj_set_scroll_dir(p_box, LV_DIR_VER);
 
     p_out = lv_label_create(p_box);
-    lv_obj_set_width(p_out, 216);
+    lv_obj_set_width(p_out, 208);
     lv_obj_set_style_text_line_space(p_out, 3, 0);
     lv_label_set_text(p_out, "");
 }
