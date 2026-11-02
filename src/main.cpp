@@ -431,6 +431,43 @@ static void wifi_service()
     }
 }
 
+// JSON list of networks in range for the picker on the /wifi page.
+static void handle_wifiscan()
+{
+    if (!authed()) return;
+    if (WiFi.getMode() == WIFI_AP) WiFi.mode(WIFI_AP_STA);   // scanning needs the station side
+    int n = WiFi.scanNetworks(false, true);                  // blocks for a few seconds; strongest first
+    String json = "[";
+    String seen[24];
+    int cnt = 0;
+    for (int i = 0; i < n && cnt < 20; i++) {
+        String ssid = WiFi.SSID(i);
+        if (ssid.length() == 0 || ssid.indexOf(',') >= 0 || ssid.indexOf('\n') >= 0) continue;
+        bool dup = false;
+        for (int k = 0; k < cnt; k++) if (seen[k] == ssid) { dup = true; break; }
+        if (dup) continue;
+        seen[cnt++] = ssid;
+        String esc;
+        for (unsigned c = 0; c < ssid.length(); c++) {
+            char ch = ssid[c];
+            if (ch == '"' || ch == '\\') { esc += '\\'; esc += ch; }
+            else if ((uint8_t)ch < 0x20) esc += ' ';
+            else esc += ch;
+        }
+        if (cnt > 1) json += ',';
+        json += "{\"s\":\"";
+        json += esc;
+        json += "\",\"r\":";
+        json += String(WiFi.RSSI(i));
+        json += ",\"o\":";
+        json += (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? "true" : "false";
+        json += "}";
+    }
+    WiFi.scanDelete();
+    json += "]";
+    server.send(200, "application/json", json);
+}
+
 static void handle_wifi_page()
 {
     if (!authed()) return;
@@ -441,6 +478,36 @@ static void handle_wifi_page()
                     "<p>One per line: <code>Network name, password</code> (leave the password out for an open network, "
                     "max 5). The board joins the strongest saved network in range. The network in secrets.h is always "
                     "tried too. Saving restarts the board.</p>"
+                    R"WIFI(<p><button type=button id=scanbtn style='padding:8px 16px'>Scan for networks</button></p>
+                    <div id=scanres style='margin:8px 0'></div>
+                    <script>
+                    var b=document.getElementById('scanbtn'),r=document.getElementById('scanres'),t=document.getElementsByName('nets')[0];
+                    b.onclick=function(){
+                     b.disabled=true;r.textContent='Scanning... (about 5 seconds, this page may pause)';
+                     fetch('/wifiscan').then(function(x){if(!x.ok)throw 0;return x.json();}).then(function(list){
+                      r.textContent='';
+                      if(!list.length){r.textContent='No networks found.';}
+                      list.forEach(function(n){
+                       var d=document.createElement('button');d.type='button';
+                       d.style.cssText='display:block;width:100%;text-align:left;padding:8px;margin:4px 0';
+                       d.textContent=n.s+'   '+n.r+' dBm'+(n.o?'  (open)':'');
+                       d.onclick=function(){
+                        var lines=t.value.split('\n'),found=-1;
+                        for(var i=0;i<lines.length;i++){if(lines[i].split(',')[0].trim()===n.s){found=i;break;}}
+                        var pos;
+                        if(found<0){
+                         t.value=(t.value.trim()?t.value.replace(/\s+$/,'')+'\n':'')+n.s+(n.o?'':', ');
+                         pos=t.value.length;
+                        }else{
+                         pos=lines.slice(0,found+1).join('\n').length;
+                        }
+                        t.focus();t.setSelectionRange(pos,pos);
+                       };
+                       r.appendChild(d);
+                      });
+                     }).catch(function(){r.textContent='Scan failed. Try again.';}).then(function(){b.disabled=false;});
+                    };
+                    </script>)WIFI"
                     "<form method=POST action=/wifi>"
                     "<textarea name=nets rows=6 style='width:100%;font-family:monospace'>");
     page += html_escape(raw_wifi);
@@ -2256,6 +2323,7 @@ void loop()
             server.on("/save", HTTP_POST, handle_save);
             server.on("/wifi", HTTP_GET, handle_wifi_page);
             server.on("/wifi", HTTP_POST, handle_wifi_save);
+            server.on("/wifiscan", HTTP_GET, handle_wifiscan);
             server.on("/tools", HTTP_GET, handle_tools);
             server.on("/settings", HTTP_POST, handle_settings_save);
             server.on("/export", HTTP_GET, handle_export);
