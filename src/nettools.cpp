@@ -1472,7 +1472,7 @@ static bool gh_get(const String &path, const String &tok, JsonDocument &filter, 
         if (code == 401) err = "GitHub refused the token (401).";
         else if (code == 404) err = "User not found (404).";
         else if (code == 403 || code == 429) err = "Rate limited or forbidden (" + String(code) + ").";
-        else if (code < 0) err = "No connection to GitHub.";
+        else if (code < 0) err = String("No connection to GitHub (") + code + ", heap " + String(ESP.getMaxAllocHeap() / 1024) + " KB).";
         else err = "GitHub answered HTTP " + String(code) + ".";
         return false;
     }
