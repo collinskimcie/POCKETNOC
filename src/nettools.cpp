@@ -1436,6 +1436,7 @@ static bool gh_get(const String &path, const String &tok, JsonDocument &filter, 
     http.setTimeout(8000);
     http.setConnectTimeout(8000);
     http.setUserAgent("PocketNOC");
+    http.setTimeout(15000);
     if (!http.begin(client, String("https://api.github.com") + path)) { err = "Bad request"; return false; }
     http.addHeader("Accept", "application/vnd.github+json");
     if (tok.length()) http.addHeader("Authorization", String("Bearer ") + tok);
@@ -1449,7 +1450,8 @@ static bool gh_get(const String &path, const String &tok, JsonDocument &filter, 
         else err = "GitHub answered HTTP " + String(code) + ".";
         return false;
     }
-    DeserializationError e = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
+    DeserializationError e = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter),
+                                             DeserializationOption::NestingLimit(30));
     http.end();
     if (e) { err = String("Could not read the reply: ") + e.c_str(); return false; }
     return true;
@@ -1525,7 +1527,7 @@ static void tool_github()
         filter[0]["created_at"] = true;
         filter[0]["repo"]["name"] = true;
         filter[0]["payload"]["commits"][0]["message"] = true;
-        if (!gh_get(String("/users/") + user + "/events?per_page=10", tok, filter, doc, err)) {
+        if (!gh_get(String("/users/") + user + "/events?per_page=8", tok, filter, doc, err)) {
             out += "Activity: " + err + "\n";
         } else {
             out += "Recent activity\n";

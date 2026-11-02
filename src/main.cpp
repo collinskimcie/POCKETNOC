@@ -1242,6 +1242,74 @@ static void settings_build_page()
     lv_obj_align(hint, LV_ALIGN_TOP_LEFT, 10, 288);
 }
 
+// ---- Home page (redesign): clock, status card, stat tiles, quick buttons ----
+static lv_obj_t *h_date = nullptr;
+
+static void on_home_date_timer(lv_timer_t *t)
+{
+    if (!h_date) return;
+    time_t now = time(nullptr);
+    if (now < 1700000000) { lv_label_set_text(h_date, "Syncing time..."); return; }
+    struct tm tmv;
+    localtime_r(&now, &tmv);
+    char b[24];
+    strftime(b, sizeof(b), "%a %d %b", &tmv);
+    lv_label_set_text(h_date, b);
+}
+
+static void on_act_github(lv_event_t *e) { nettools_open("GitHub"); }
+
+static void home_style_card(lv_obj_t *c, int radius)
+{
+    lv_obj_set_style_radius(c, radius, 0);
+    lv_obj_set_style_border_width(c, 0, 0);
+    lv_obj_set_style_pad_all(c, 0, 0);
+    lv_obj_set_style_bg_color(c, C_CARD, 0);
+    lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(c, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+static lv_obj_t *home_stat(lv_obj_t *parent, int x, const char *cap, const lv_font_t *valueFont)
+{
+    lv_obj_t *c = lv_obj_create(parent);
+    lv_obj_set_size(c, 70, 46);
+    lv_obj_align(c, LV_ALIGN_TOP_LEFT, x, 182);
+    home_style_card(c, 10);
+    lv_obj_t *k = lv_label_create(c);
+    lv_label_set_text(k, cap);
+    lv_obj_set_style_text_font(k, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(k, lv_palette_main(LV_PALETTE_GREY), 0);
+    lv_obj_align(k, LV_ALIGN_TOP_MID, 0, 4);
+    lv_obj_t *v = lv_label_create(c);
+    lv_label_set_text(v, "--");
+    lv_obj_set_style_text_font(v, valueFont, 0);
+    lv_obj_align(v, LV_ALIGN_BOTTOM_MID, 0, -4);
+    return v;
+}
+
+static void home_btn(lv_obj_t *parent, int x, const char *icon, const char *cap, lv_event_cb_t cb, bool accent)
+{
+    lv_obj_t *b = lv_btn_create(parent);
+    lv_obj_set_size(b, 40, 44);
+    lv_obj_align(b, LV_ALIGN_TOP_LEFT, x, 234);
+    lv_obj_set_style_radius(b, 10, 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_set_style_pad_all(b, 0, 0);
+    lv_obj_set_style_bg_color(b, accent ? lv_palette_darken(LV_PALETTE_BLUE, 2) : C_CARD, 0);
+    lv_obj_set_style_bg_color(b, lv_palette_darken(LV_PALETTE_BLUE, 3), LV_STATE_PRESSED);
+    lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t *i = lv_label_create(b);
+    lv_label_set_text(i, icon);
+    lv_obj_set_style_text_font(i, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(i, C_TEXT, 0);
+    lv_obj_align(i, LV_ALIGN_TOP_MID, 0, 4);
+    lv_obj_t *l = lv_label_create(b);
+    lv_label_set_text(l, cap);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(l, C_TEXT, 0);
+    lv_obj_align(l, LV_ALIGN_BOTTOM_MID, 0, -3);
+}
+
 static void build_ui()
 {
     lv_obj_set_style_bg_color(lv_scr_act(), C_BG, 0);
@@ -1263,22 +1331,18 @@ static void build_ui()
     // ---- Page 0: Home dashboard ----
     lv_obj_t *h_name = lv_label_create(t0);
     lv_label_set_text(h_name, DEVICE_NAME);
-    lv_obj_set_style_text_font(h_name, &lv_font_montserrat_16, 0);
-    lv_obj_align(h_name, LV_ALIGN_TOP_LEFT, 10, 8);
-
-    h_time = lv_label_create(t0);
-    lv_obj_set_style_text_font(h_time, &lv_font_montserrat_16, 0);
-    lv_label_set_text(h_time, "--:--");
-    lv_obj_align(h_time, LV_ALIGN_TOP_RIGHT, -10, 8);
+    lv_obj_set_style_text_font(h_name, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(h_name, lv_palette_main(LV_PALETTE_GREY), 0);
+    lv_obj_align(h_name, LV_ALIGN_TOP_LEFT, 12, 9);
 
     h_wifi = lv_label_create(t0);
     lv_obj_set_style_text_font(h_wifi, &lv_font_montserrat_16, 0);
     lv_label_set_text(h_wifi, LV_SYMBOL_WIFI);
-    lv_obj_align(h_wifi, LV_ALIGN_TOP_RIGHT, -68, 8);
+    lv_obj_align(h_wifi, LV_ALIGN_TOP_RIGHT, -46, 8);
 
     lv_obj_t *h_gear = lv_btn_create(t0);      // opens the Settings page
     lv_obj_set_size(h_gear, 34, 28);
-    lv_obj_align(h_gear, LV_ALIGN_TOP_RIGHT, -92, 3);
+    lv_obj_align(h_gear, LV_ALIGN_TOP_RIGHT, -4, 3);
     lv_obj_set_style_bg_opa(h_gear, LV_OPA_TRANSP, 0);
     lv_obj_set_style_shadow_width(h_gear, 0, 0);
     lv_obj_set_style_pad_all(h_gear, 0, 0);
@@ -1288,50 +1352,68 @@ static void build_ui()
     lv_obj_set_style_text_color(h_gear_lbl, lv_palette_main(LV_PALETTE_GREY), 0);
     lv_obj_center(h_gear_lbl);
 
-    h_arc = lv_arc_create(t0);
-    lv_obj_set_size(h_arc, 120, 120);
-    lv_obj_align(h_arc, LV_ALIGN_TOP_MID, 0, 30);
+    h_time = lv_label_create(t0);              // the header clock, now the big clock
+    lv_obj_set_style_text_font(h_time, &lv_font_montserrat_30, 0);
+    lv_label_set_text(h_time, "--:--");
+    lv_obj_align(h_time, LV_ALIGN_TOP_MID, 0, 26);
+
+    h_date = lv_label_create(t0);
+    lv_obj_set_style_text_font(h_date, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(h_date, lv_palette_main(LV_PALETTE_GREY), 0);
+    lv_label_set_text(h_date, "");
+    lv_obj_align(h_date, LV_ALIGN_TOP_MID, 0, 62);
+    lv_timer_create(on_home_date_timer, 1000, nullptr);
+
+    lv_obj_t *card = lv_obj_create(t0);        // status card: ring + caption
+    lv_obj_set_size(card, 224, 92);
+    lv_obj_align(card, LV_ALIGN_TOP_MID, 0, 84);
+    home_style_card(card, 14);
+
+    h_arc = lv_arc_create(card);
+    lv_obj_set_size(h_arc, 72, 72);
+    lv_obj_align(h_arc, LV_ALIGN_LEFT_MID, 10, 0);
     lv_arc_set_rotation(h_arc, 270);
     lv_arc_set_bg_angles(h_arc, 0, 360);
     lv_arc_set_range(h_arc, 0, 100);
     lv_arc_set_value(h_arc, 0);
     lv_obj_remove_style(h_arc, NULL, LV_PART_KNOB);
     lv_obj_clear_flag(h_arc, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_arc_width(h_arc, 12, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(h_arc, 12, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(h_arc, C_CARD, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(h_arc, 9, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(h_arc, 9, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(h_arc, C_BG, LV_PART_MAIN);
     lv_obj_set_style_arc_color(h_arc, lv_palette_main(LV_PALETTE_BLUE), LV_PART_INDICATOR);
 
-    h_count = lv_label_create(t0);
-    lv_obj_set_style_text_font(h_count, &lv_font_montserrat_30, 0);
+    h_count = lv_label_create(card);
+    lv_obj_set_style_text_font(h_count, &lv_font_montserrat_16, 0);
     lv_label_set_text(h_count, "--");
     lv_obj_align_to(h_count, h_arc, LV_ALIGN_CENTER, 0, 0);
 
-    lv_obj_t *h_tap = lv_obj_create(t0);       // invisible: tap the ring to open the incident log
-    lv_obj_set_size(h_tap, 120, 120);
-    lv_obj_align(h_tap, LV_ALIGN_TOP_MID, 0, 30);
+    lv_obj_t *h_tap = lv_obj_create(card);     // invisible: tap the ring to open the incident log
+    lv_obj_set_size(h_tap, 72, 72);
+    lv_obj_align(h_tap, LV_ALIGN_LEFT_MID, 10, 0);
     lv_obj_set_style_bg_opa(h_tap, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(h_tap, 0, 0);
     lv_obj_set_style_radius(h_tap, LV_RADIUS_CIRCLE, 0);
     lv_obj_clear_flag(h_tap, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(h_tap, on_hist_open, LV_EVENT_CLICKED, nullptr);
 
-    h_caption = lv_label_create(t0);
+    h_caption = lv_label_create(card);
     lv_obj_set_style_text_font(h_caption, &lv_font_montserrat_16, 0);
+    lv_label_set_long_mode(h_caption, LV_LABEL_LONG_WRAP);
     lv_label_set_text(h_caption, "Starting...");
-    lv_obj_set_style_text_align(h_caption, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_width(h_caption, 232);
-    lv_obj_align(h_caption, LV_ALIGN_TOP_MID, 0, 154);
+    lv_obj_set_style_text_align(h_caption, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_set_width(h_caption, 118);
+    lv_obj_align(h_caption, LV_ALIGN_LEFT_MID, 96, 0);
 
-    make_stat(t0, 8, "Avg", &h_avg);
-    make_stat(t0, 85, "Signal", &h_sig);
-    lv_obj_set_style_text_font(h_sig, &lv_font_montserrat_14, 0);
-    make_stat(t0, 162, "Uptime", &h_up);
+    h_avg = home_stat(t0, 8, "Avg", &lv_font_montserrat_16);
+    h_sig = home_stat(t0, 85, "Signal", &lv_font_montserrat_14);
+    h_up = home_stat(t0, 162, "Uptime", &lv_font_montserrat_16);
 
-    style_action(make_button(t0, "Scan", 52, 8, 236, on_act_scan, nullptr));
-    style_action(make_button(t0, "Ping", 52, 66, 236, on_act_ping, nullptr));
-    style_action(make_button(t0, "Speed", 52, 124, 236, on_act_speed, nullptr));
-    style_action(make_button(t0, "Check", 52, 182, 236, on_act_check, nullptr));
+    home_btn(t0, 8, LV_SYMBOL_WIFI, "Scan", on_act_scan, false);
+    home_btn(t0, 54, LV_SYMBOL_REFRESH, "Ping", on_act_ping, false);
+    home_btn(t0, 100, LV_SYMBOL_CHARGE, "Speed", on_act_speed, false);
+    home_btn(t0, 146, LV_SYMBOL_OK, "Check", on_act_check, false);
+    home_btn(t0, 192, LV_SYMBOL_DIRECTORY, "Git", on_act_github, true);
 
     // ---- Page 1: status list ----
     lv_obj_t *title = lv_label_create(t1);
