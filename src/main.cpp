@@ -38,7 +38,7 @@ static const char *DEFAULT_CFG =
     "Broken test, https://github.com/this-page-does-not-exist-404\n";
 
 // ---- Service configuration (shared between tasks, guarded by cfgMutex) ----
-struct Service { char name[24]; char url[110]; char word[24]; uint16_t every; uint16_t slow; };
+struct Service { char name[24]; char url[110]; char word[24]; uint16_t every; uint16_t slow; uint16_t expect; };
 static Service cfg[MAX_SERVICES];
 static int cfgCount = 0;
 static volatile bool cfgChanged = true;
@@ -118,7 +118,7 @@ static void notify_reload(bool announce)
 // A web line may end with ", contains=word". Returns the number parsed.
 static bool url_ok(const String &u)
 {
-    return u.startsWith("http://") || u.startsWith("https://") || u.startsWith("tcp://") || u.startsWith("ping://");
+    return u.startsWith("http://") || u.startsWith("https://") || u.startsWith("tcp://") || u.startsWith("ping://") || u.startsWith("dns://");
 }
 
 static int parse_config(const String &text, Service *out)
@@ -138,7 +138,7 @@ static int parse_config(const String &text, Service *out)
         String name = line.substring(0, comma);
         String url = line.substring(comma + 1);
         String word = "";
-        int every = 0, slow = 0;
+        int every = 0, slow = 0, expect = 0;
         int c2;
         while ((c2 = url.lastIndexOf(',')) >= 0) {   // options at the end of the line, in any order
             String tail = url.substring(c2 + 1);
@@ -146,6 +146,7 @@ static int parse_config(const String &text, Service *out)
             if (tail.startsWith("contains=")) { word = tail.substring(9); word.trim(); }
             else if (tail.startsWith("every=")) every = tail.substring(6).toInt();
             else if (tail.startsWith("slow=")) slow = tail.substring(5).toInt();
+            else if (tail.startsWith("status=")) expect = tail.substring(7).toInt();
             else break;
             url = url.substring(0, c2);
         }
@@ -153,15 +154,17 @@ static int parse_config(const String &text, Service *out)
         if (every > 3600) every = 3600;
         if (slow < 0) slow = 0;
         if (slow > 60000) slow = 60000;
+        if (expect < 100 || expect > 599) expect = 0;
         name.trim();
         url.trim();
         if (name.length() == 0 || !url_ok(url)) continue;
-        if (!(url.startsWith("http://") || url.startsWith("https://"))) word = "";   // keywords: web checks only
+        if (!(url.startsWith("http://") || url.startsWith("https://"))) { word = ""; expect = 0; }   // keyword and status: web checks only
         strlcpy(out[n].name, name.c_str(), sizeof(out[n].name));
         strlcpy(out[n].url, url.c_str(), sizeof(out[n].url));
         strlcpy(out[n].word, word.c_str(), sizeof(out[n].word));
         out[n].every = (uint16_t)every;
         out[n].slow = (uint16_t)slow;
+        out[n].expect = (uint16_t)expect;
         n++;
     }
     return n;
@@ -319,7 +322,7 @@ static void handle_root()
                     "<h2>" DEVICE_NAME "</h2>"
                     "<form method=POST action=/save>"
                     "<h3>Services to monitor</h3>"
-                    "<p>One service per line (max 5): <code>Name, https://url</code>, or <code>Name, tcp://host:port</code> (port check), or <code>Name, ping://host</code>. Add <code>, contains=word</code> to a web line to require that word in the page (case sensitive, up to 23 characters, searched in the first 16 KB). A line can also end with <code>, every=60</code> (check at most every 60 seconds, minimum 10) and <code>, slow=1500</code> (alert when 3 checks in a row take longer than 1500 ms).</p>"
+                    "<p>One service per line (max 5): <code>Name, https://url</code>, or <code>Name, tcp://host:port</code> (port check), or <code>Name, ping://host</code>, or <code>Name, dns://name</code> (name lookup). Add <code>, contains=word</code> to a web line to require that word in the page (case sensitive, up to 23 characters, searched in the first 16 KB). A line can also end with <code>, every=60</code> (check at most every 60 seconds, minimum 10) and <code>, slow=1500</code> (alert when 3 checks in a row take longer than 1500 ms). A web line can end with <code>, status=401</code> to count as UP only when the server answers with exactly that code.</p>"
                     "<textarea name=cfg rows=6 style='width:100%;font-family:monospace'>");
     page += html_escape(raw_cfg);
     page += F("</textarea>"
@@ -1789,10 +1792,26 @@ static bool wifi_settled()
     return c;
 }
 
+static int check_dns(const char *name, uint32_t &ms)
+{
+    String n(name);
+    n.trim();
+    if (n.length() < 3 || n.indexOf('.') < 0) {
+        Serial.printf("dns: bad name '%s' (needs dns://name.example)\n", n.c_str());
+        return -100;
+    }
+    IPAddress ip;
+    uint32_t t0 = millis();
+    int r = WiFi.hostByName(n.c_str(), ip);
+    ms = millis() - t0;
+    return r == 1 ? 200 : -1;
+}
+
 static int check_service(const Service &s, uint32_t &ms)
 {
     if (!wifi_settled()) return CHECK_SKIPPED;   // the board itself is offline: say nothing about the service
     if (strncmp(s.url, "tcp://", 6) == 0) return check_tcp(s.url + 6, ms);
+    if (strncmp(s.url, "dns://", 6) == 0) return check_dns(s.url + 6, ms);
     if (strncmp(s.url, "ping://", 7) == 0) {
         uint32_t rtt = 0;
         int r = nettools_ping(s.url + 7, 1000, rtt);   // 1 reply, 0 no reply, -1 ping helper busy
@@ -2053,7 +2072,7 @@ static void monitor_task(void *)
                 if (!confirmedDown[i]) up++;
                 continue;
             }
-            bool ok = code > 0 && code < 400;
+            bool ok = snap[i].expect ? (code == snap[i].expect) : (code > 0 && code < 400);
             if (ok) up++;
             Serial.printf("%-12s code=%d  %lu ms  %s\n",
                           snap[i].name, code, (unsigned long)ms, ok ? "UP" : "DOWN");
@@ -2138,6 +2157,30 @@ static void monitor_task(void *)
                 }
                 if (f >= 0) lastFresh = f;
                 else if (f == -1) nextScan = millis() + 10UL * 60UL * 1000UL;   // a tool is busy: try again soon
+            }
+        }
+        {   // daily summary alert at summaryHour (board clock, needs NTP); -1 turns it off
+            const int summaryHour = 8;
+            static int lastDay = -2;
+            time_t nowT = time(nullptr);
+            if (summaryHour >= 0 && nowT > 1700000000) {
+                struct tm tmv;
+                localtime_r(&nowT, &tmv);
+                if (lastDay == -2) lastDay = (tmv.tm_hour >= summaryHour) ? tmv.tm_yday : -1;   // booted after the hour: skip today
+                if (tmv.tm_hour == summaryHour && tmv.tm_yday != lastDay && count > 0) {
+                    lastDay = tmv.tm_yday;
+                    int upN = 0;
+                    unsigned long chk = 0, upc = 0;
+                    for (int i = 0; i < count; i++) {
+                        if (!confirmedDown[i]) upN++;
+                        chk += hist[i].checks;
+                        upc += hist[i].upChecks;
+                    }
+                    char sm[96];
+                    snprintf(sm, sizeof(sm), "Daily summary: %d/%d services up, uptime %d%% since boot",
+                             upN, count, chk ? (int)(upc * 100UL / chk) : 100);
+                    notify_queue(sm, NOTE_UP);
+                }
             }
         }
         notify_flush();
@@ -2271,6 +2314,7 @@ static void handle_export()
         if (cfg[i].word[0]) { out += ", contains="; out += cfg[i].word; }
         if (cfg[i].every) { out += ", every="; out += String((int)cfg[i].every); }
         if (cfg[i].slow) { out += ", slow="; out += String((int)cfg[i].slow); }
+        if (cfg[i].expect) { out += ", status="; out += String((int)cfg[i].expect); }
         out += '\n';
     }
     xSemaphoreGive(cfgMutex);
@@ -2338,6 +2382,39 @@ static void handle_wol()
                 ". <a href=/tools>Back</a></body>");
 }
 
+// ---- /metrics: Prometheus text format, behind the normal web login ----
+static String prom_label(const char *t)
+{
+    String o;
+    for (; *t; t++) {
+        if (*t == '\\' || *t == '"') { o += '\\'; o += *t; }
+        else if ((uint8_t)*t >= 0x20) o += *t;
+    }
+    return o;
+}
+
+static void handle_metrics()
+{
+    if (!authed()) return;
+    String o;
+    o.reserve(1600);
+    o += "# TYPE pocketnoc_up gauge\n# TYPE pocketnoc_response_ms gauge\n";
+    o += "# TYPE pocketnoc_checks_total counter\n# TYPE pocketnoc_checks_up_total counter\n";
+    for (int i = 0; i < uiCount && i < MAX_SERVICES; i++) {
+        const History &h = hist[i];
+        if (!h.has) continue;
+        String lab = String("{service=\"") + prom_label(uiSvc[i].name) + "\"}";
+        o += "pocketnoc_up" + lab + (confirmedDown[i] ? " 0\n" : " 1\n");
+        if (h.lastOk) o += "pocketnoc_response_ms" + lab + " " + String((unsigned long)h.lastMs) + "\n";
+        o += "pocketnoc_checks_total" + lab + " " + String((unsigned long)h.checks) + "\n";
+        o += "pocketnoc_checks_up_total" + lab + " " + String((unsigned long)h.upChecks) + "\n";
+    }
+    o += "pocketnoc_uptime_seconds " + String((unsigned long)(millis() / 1000)) + "\n";
+    o += "pocketnoc_free_heap_bytes " + String((unsigned long)ESP.getFreeHeap()) + "\n";
+    o += "pocketnoc_wifi_rssi_dbm " + String((int)WiFi.RSSI()) + "\n";
+    server.send(200, "text/plain; version=0.0.4", o);
+}
+
 void setup()
 {
     Serial.begin(115200);
@@ -2400,6 +2477,7 @@ void loop()
             server.on("/save", HTTP_POST, handle_save);
             server.on("/wifi", HTTP_GET, handle_wifi_page);
             server.on("/wifi", HTTP_POST, handle_wifi_save);
+            server.on("/metrics", HTTP_GET, handle_metrics);
             server.on("/wifiscan", HTTP_GET, handle_wifiscan);
             server.on("/wificonnect", HTTP_POST, handle_wificonnect);
             server.on("/tools", HTTP_GET, handle_tools);
