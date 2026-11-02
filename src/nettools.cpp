@@ -1296,6 +1296,10 @@ static String cn_flow()
     lv_obj_set_pos(cn_ov, 0, 0);
     lv_obj_set_style_radius(cn_ov, 0, 0);
     lv_obj_set_style_pad_all(cn_ov, 6, 0);
+    lv_obj_set_style_border_width(cn_ov, 0, 0);
+    lv_obj_set_style_bg_color(cn_ov, NT_BG, 0);
+    lv_obj_set_style_bg_opa(cn_ov, LV_OPA_COVER, 0);
+    lv_obj_set_style_text_color(cn_ov, NT_TEXT, 0);
     lv_obj_clear_flag(cn_ov, LV_OBJ_FLAG_SCROLLABLE);
     cn_status = lv_label_create(cn_ov);
     lv_label_set_long_mode(cn_status, LV_LABEL_LONG_WRAP);
@@ -1303,6 +1307,10 @@ static String cn_flow()
     lv_obj_align(cn_status, LV_ALIGN_TOP_LEFT, 0, 4);
     lv_label_set_text(cn_status, "Scanning...");
     lv_obj_t *cb = lv_btn_create(cn_ov);
+    lv_obj_set_style_radius(cb, 10, 0);
+    lv_obj_set_style_shadow_width(cb, 0, 0);
+    lv_obj_set_style_bg_color(cb, NT_CARD, 0);
+    lv_obj_set_style_text_color(cb, NT_TEXT, 0);
     lv_obj_align(cb, LV_ALIGN_TOP_RIGHT, 0, 0);
     lv_obj_t *cl = lv_label_create(cb);
     lv_label_set_text(cl, "Cancel");
@@ -1329,11 +1337,21 @@ static String cn_flow()
     lv_label_set_text(cn_status, "Tap a network");
     cn_list = lv_list_create(cn_ov);
     lv_obj_set_size(cn_list, lv_pct(100), lv_pct(78));
+    lv_obj_set_style_radius(cn_list, 12, 0);
+    lv_obj_set_style_border_width(cn_list, 0, 0);
+    lv_obj_set_style_bg_color(cn_list, NT_CARD, 0);
+    lv_obj_set_style_bg_opa(cn_list, LV_OPA_COVER, 0);
+    lv_obj_set_style_text_color(cn_list, NT_TEXT, 0);
     lv_obj_align(cn_list, LV_ALIGN_TOP_MID, 0, 44);
     for (int i = 0; i < cn_count; i++) {
         char line[64];
         snprintf(line, sizeof(line), "%s  %d dBm%s", cn_ssid[i], (int)cn_rssi[i], cn_open[i] ? "  open" : "");
         lv_obj_t *b = lv_list_add_btn(cn_list, LV_SYMBOL_WIFI, line);
+        lv_obj_set_style_bg_opa(b, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_text_color(b, NT_TEXT, 0);
+        lv_obj_set_style_border_color(b, NT_GRID, 0);
+        lv_obj_set_style_bg_color(b, lv_palette_darken(LV_PALETTE_BLUE, 3), LV_STATE_PRESSED);
+        lv_obj_set_style_bg_opa(b, LV_OPA_COVER, LV_STATE_PRESSED);
         lv_obj_add_event_cb(b, cn_on_pick, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     }
     lvgl_port_unlock();
@@ -1355,8 +1373,15 @@ static String cn_flow()
         lv_textarea_set_max_length(cn_ta, 63);
         lv_textarea_set_placeholder_text(cn_ta, "8 to 63 characters");
         lv_obj_set_width(cn_ta, lv_pct(70));
+        lv_obj_set_style_radius(cn_ta, 10, 0);
+        lv_obj_set_style_bg_color(cn_ta, NT_CARD, 0);
+        lv_obj_set_style_text_color(cn_ta, NT_TEXT, 0);
         lv_obj_align(cn_ta, LV_ALIGN_TOP_LEFT, 0, 44);
         cn_show = lv_btn_create(cn_ov);
+        lv_obj_set_style_radius(cn_show, 10, 0);
+        lv_obj_set_style_shadow_width(cn_show, 0, 0);
+        lv_obj_set_style_bg_color(cn_show, NT_CARD, 0);
+        lv_obj_set_style_text_color(cn_show, NT_TEXT, 0);
         lv_obj_align(cn_show, LV_ALIGN_TOP_RIGHT, 0, 44);
         lv_obj_t *sl = lv_label_create(cn_show);
         lv_label_set_text(sl, "Show");
