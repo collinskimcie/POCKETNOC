@@ -403,8 +403,11 @@ static void wifi_add_networks()
     Serial.printf("Wi-Fi: %d saved networks (+ secrets.h)\n", added);
 }
 
+volatile bool g_wifiManual = false;   // set by the on-screen Connect tool
+
 static void wifi_service()
 {
+    if (g_wifiManual) return;   // the Connect tool is joining a network: leave the radio alone
     uint32_t now = millis();
     if (WiFi.status() == WL_CONNECTED) {
         wifiDownSince = 0;

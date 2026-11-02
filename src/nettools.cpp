@@ -1212,7 +1212,216 @@ int nettools_scan_new(char *first, size_t firstLen)
     return fresh;
 }
 
+// ---------- Connect: pick a network on the screen, type the password, connect and save ----------
+#include <Preferences.h>
+extern volatile bool g_wifiManual;   // main.cpp: pauses the automatic Wi-Fi reconnect while we join a network
+
+static const int CN_MAX = 16;
+static char cn_ssid[CN_MAX][33];
+static int8_t cn_rssi[CN_MAX];
+static bool cn_open[CN_MAX];
+static int cn_count = 0;
+static volatile int cn_sel = -1;
+static volatile int cn_kb = 0;            // 0 waiting, 1 OK pressed
+static volatile bool cn_cancel = false;
+static bool cn_shown = false;
+static lv_obj_t *cn_ov = nullptr, *cn_list = nullptr, *cn_status = nullptr, *cn_ta = nullptr;
+static lv_obj_t *cn_kbd = nullptr, *cn_show = nullptr;
+
+static void cn_on_pick(lv_event_t *e) { cn_sel = (int)(intptr_t)lv_event_get_user_data(e); }
+static void cn_on_cancel(lv_event_t *e) { cn_cancel = true; }
+static void cn_on_kb(lv_event_t *e) { if (lv_event_get_code(e) == LV_EVENT_READY) cn_kb = 1; }
+static void cn_on_show(lv_event_t *e)
+{
+    cn_shown = !cn_shown;
+    lv_textarea_set_password_mode(cn_ta, !cn_shown);
+}
+
+static void cn_status_set(const char *t)
+{
+    lvgl_port_lock(-1);
+    if (cn_status) lv_label_set_text(cn_status, t);
+    lvgl_port_unlock();
+}
+
+// Saves "name, password" at the end of the saved list (same format as the web page), newest last, max 5.
+static void cn_save(const char *ssid, const char *pw)
+{
+    Preferences p;
+    p.begin("statusboard", false);
+    String raw = p.isKey("wifi") ? p.getString("wifi", "") : String("");
+    String keep[5];
+    int k = 0, pos = 0, len = raw.length();
+    while (pos < len) {
+        int eol = raw.indexOf('\n', pos);
+        if (eol < 0) eol = len;
+        String line = raw.substring(pos, eol);
+        pos = eol + 1;
+        line.trim();
+        if (line.length() == 0) continue;
+        int comma = line.indexOf(',');
+        String nm = comma < 0 ? line : line.substring(0, comma);
+        nm.trim();
+        if (nm == ssid) continue;
+        if (k == 4) {
+            for (int j = 0; j < 3; j++) keep[j] = keep[j + 1];
+            keep[3] = line;
+        } else {
+            keep[k++] = line;
+        }
+    }
+    keep[k++] = pw[0] ? String(ssid) + ", " + pw : String(ssid);
+    String joined;
+    for (int j = 0; j < k; j++) {
+        if (j) joined += '\n';
+        joined += keep[j];
+    }
+    p.putString("wifi", joined);
+    p.end();
+}
+
+static String cn_flow()
+{
+    cn_sel = -1;
+    cn_kb = 0;
+    cn_cancel = false;
+    cn_shown = false;
+    cn_count = 0;
+    if (WiFi.getMode() == WIFI_AP) WiFi.mode(WIFI_AP_STA);   // scanning needs the station side
+
+    lvgl_port_lock(-1);
+    cn_ov = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(cn_ov, lv_pct(100), lv_pct(100));
+    lv_obj_set_pos(cn_ov, 0, 0);
+    lv_obj_set_style_radius(cn_ov, 0, 0);
+    lv_obj_set_style_pad_all(cn_ov, 6, 0);
+    lv_obj_clear_flag(cn_ov, LV_OBJ_FLAG_SCROLLABLE);
+    cn_status = lv_label_create(cn_ov);
+    lv_label_set_long_mode(cn_status, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(cn_status, lv_pct(62));
+    lv_obj_align(cn_status, LV_ALIGN_TOP_LEFT, 0, 4);
+    lv_label_set_text(cn_status, "Scanning...");
+    lv_obj_t *cb = lv_btn_create(cn_ov);
+    lv_obj_align(cb, LV_ALIGN_TOP_RIGHT, 0, 0);
+    lv_obj_t *cl = lv_label_create(cb);
+    lv_label_set_text(cl, "Cancel");
+    lv_obj_add_event_cb(cb, cn_on_cancel, LV_EVENT_CLICKED, nullptr);
+    lvgl_port_unlock();
+
+    int n = WiFi.scanNetworks(false, true);   // blocks a few seconds
+    if (cancelled() || cn_cancel) { WiFi.scanDelete(); return "Cancelled."; }
+    for (int i = 0; i < n && cn_count < CN_MAX; i++) {
+        String s = WiFi.SSID(i);
+        if (s.length() == 0 || s.length() > 32 || s.indexOf(',') >= 0 || s.indexOf('\n') >= 0) continue;
+        bool dup = false;
+        for (int k = 0; k < cn_count; k++) if (s == cn_ssid[k]) dup = true;
+        if (dup) continue;
+        strlcpy(cn_ssid[cn_count], s.c_str(), sizeof(cn_ssid[0]));
+        cn_rssi[cn_count] = (int8_t)WiFi.RSSI(i);
+        cn_open[cn_count] = (WiFi.encryptionType(i) == WIFI_AUTH_OPEN);
+        cn_count++;
+    }
+    WiFi.scanDelete();
+    if (cn_count == 0) return "No networks found.\nMove closer to the router.";
+
+    lvgl_port_lock(-1);
+    lv_label_set_text(cn_status, "Tap a network");
+    cn_list = lv_list_create(cn_ov);
+    lv_obj_set_size(cn_list, lv_pct(100), lv_pct(78));
+    lv_obj_align(cn_list, LV_ALIGN_TOP_MID, 0, 44);
+    for (int i = 0; i < cn_count; i++) {
+        char line[64];
+        snprintf(line, sizeof(line), "%s  %d dBm%s", cn_ssid[i], (int)cn_rssi[i], cn_open[i] ? "  open" : "");
+        lv_obj_t *b = lv_list_add_btn(cn_list, LV_SYMBOL_WIFI, line);
+        lv_obj_add_event_cb(b, cn_on_pick, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
+    lvgl_port_unlock();
+
+    while (cn_sel < 0 && !cn_cancel && !cancelled()) vTaskDelay(pdMS_TO_TICKS(50));
+    if (cn_sel < 0) return "Cancelled.";
+    int sel = cn_sel;
+
+    static char pw[72];
+    pw[0] = 0;
+    if (!cn_open[sel]) {
+        lvgl_port_lock(-1);
+        lv_obj_del(cn_list);
+        cn_list = nullptr;
+        lv_label_set_text_fmt(cn_status, "Password for %s", cn_ssid[sel]);
+        cn_ta = lv_textarea_create(cn_ov);
+        lv_textarea_set_one_line(cn_ta, true);
+        lv_textarea_set_password_mode(cn_ta, true);
+        lv_textarea_set_max_length(cn_ta, 63);
+        lv_textarea_set_placeholder_text(cn_ta, "8 to 63 characters");
+        lv_obj_set_width(cn_ta, lv_pct(70));
+        lv_obj_align(cn_ta, LV_ALIGN_TOP_LEFT, 0, 44);
+        cn_show = lv_btn_create(cn_ov);
+        lv_obj_align(cn_show, LV_ALIGN_TOP_RIGHT, 0, 44);
+        lv_obj_t *sl = lv_label_create(cn_show);
+        lv_label_set_text(sl, "Show");
+        lv_obj_add_event_cb(cn_show, cn_on_show, LV_EVENT_CLICKED, nullptr);
+        cn_kbd = lv_keyboard_create(cn_ov);
+        lv_keyboard_set_textarea(cn_kbd, cn_ta);
+        lv_obj_add_event_cb(cn_kbd, cn_on_kb, LV_EVENT_ALL, nullptr);
+        lvgl_port_unlock();
+
+        while (cn_kb == 0 && !cn_cancel && !cancelled()) vTaskDelay(pdMS_TO_TICKS(50));
+        if (cn_kb == 0) return "Cancelled.";
+        lvgl_port_lock(-1);
+        strlcpy(pw, lv_textarea_get_text(cn_ta), sizeof(pw));
+        lv_obj_del(cn_kbd);
+        lv_obj_del(cn_ta);
+        lv_obj_del(cn_show);
+        cn_kbd = cn_ta = cn_show = nullptr;
+        lvgl_port_unlock();
+        size_t pl = strlen(pw);
+        if (pl < 8 || pl > 63) return "The password must be 8 to 63 characters.\nRun Connect again.";
+    } else {
+        lvgl_port_lock(-1);
+        lv_obj_del(cn_list);
+        cn_list = nullptr;
+        lvgl_port_unlock();
+    }
+
+    char msg[96];
+    snprintf(msg, sizeof(msg), "Connecting to %s...\n(up to 15 seconds)", cn_ssid[sel]);
+    cn_status_set(msg);
+    g_wifiManual = true;
+    WiFi.begin(cn_ssid[sel], pw[0] ? pw : nullptr);
+    uint32_t t0 = millis();
+    wl_status_t st = WiFi.status();
+    while (st != WL_CONNECTED && st != WL_CONNECT_FAILED && millis() - t0 < 15000 && !cancelled()) {
+        vTaskDelay(pdMS_TO_TICKS(250));
+        st = WiFi.status();
+    }
+    if (st == WL_CONNECTED) {
+        cn_save(cn_ssid[sel], pw);
+        snprintf(msg, sizeof(msg), "Connected to %s\n%s\nSaved. Restarting...", cn_ssid[sel], WiFi.localIP().toString().c_str());
+        cn_status_set(msg);
+        vTaskDelay(pdMS_TO_TICKS(2500));
+        ESP.restart();
+    }
+    WiFi.disconnect(false, false);
+    const char *why = st == WL_CONNECT_FAILED ? "wrong password"
+                    : st == WL_NO_SSID_AVAIL ? "network not found"
+                    : "no answer (wrong password or weak signal)";
+    return String("Could not connect to ") + cn_ssid[sel] + ":\n" + why + ".\nNothing was saved.\nThe board will rejoin its saved\nnetworks on its own.";
+}
+
+static void tool_connect()
+{
+    String result = cn_flow();
+    lvgl_port_lock(-1);
+    if (cn_ov) { lv_obj_del(cn_ov); cn_ov = nullptr; }
+    cn_list = cn_status = cn_ta = cn_kbd = cn_show = nullptr;
+    lvgl_port_unlock();
+    g_wifiManual = false;
+    out_set(result);
+}
+
 static const ToolDef TOOLS[] = {
+    {"Wi-Fi", "Connect", tool_connect, 0, false,
+     "Pick a network, type the password, connect and save it"},
     {"Wi-Fi", "Scan networks", tool_scan, 0, true,
      "Nearby access points with signal, channel and security. Warns about open networks and look-alike names."},
     {"Wi-Fi", "Channel map", tool_channels, 1, true,
