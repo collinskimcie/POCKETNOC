@@ -1512,6 +1512,7 @@ static void tool_github()
     String out, err;
     char line[112];
 
+    String heap0 = String(ESP.getFreeHeap() / 1024) + "K/" + String(ESP.getMaxAllocHeap() / 1024) + "K";
     out_set("Loading profile...");
     {
         JsonDocument filter, doc;
@@ -1596,6 +1597,7 @@ static void tool_github()
             if (shown == 0) out += "(nothing recent)\n";
         }
     }
+    out += String("\nheap ") + heap0 + " -> " + String(ESP.getFreeHeap() / 1024) + "K/" + String(ESP.getMaxAllocHeap() / 1024) + "K\n";
     out_set(out);
 }
 
