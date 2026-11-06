@@ -1,0 +1,13 @@
+<screen>
+	<view extends="lv_obj" scrollable="false">
+		<style name="style_pn_page" />
+		<lv_label text="Services" align="top_mid" y="6" style_text_font="font_30" />
+		<service_row x="8" y="46" name="Router" info="ping 3 ms" />
+		<service_row x="8" y="87" name="Home server" info="200 OK  41 ms" />
+		<service_row x="8" y="128" name="DNS" info="12 ms" />
+		<service_row x="8" y="169" name="GitHub" info="200 OK  180 ms" />
+		<service_row x="8" y="210" name="Website" info="timeout" dot_color="#c_red" />
+		<lv_label text="4 of 5 up" align="top_mid" y="252" style_text_font="font_body" />
+		<tab_bar align="bottom_mid" />
+	</view>
+</screen>

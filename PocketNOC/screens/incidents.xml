@@ -1,0 +1,10 @@
+<screen>
+	<view extends="lv_obj" scrollable="false">
+		<style name="style_pn_page" />
+		<page_header title="Incidents" />
+		<lv_obj width="224" height="264" align="top_left" x="8" y="48" style_pad_all="8">
+			<style name="style_pn_card" />
+			<lv_label text="12:40 Website DOWN&#10;12:52 Website UP (12 min)&#10;09:15 DNS DOWN&#10;09:16 DNS UP (1 min)" width="208" long_mode="wrap" style_text_font="font_body" style_text_line_space="3" />
+		</lv_obj>
+	</view>
+</screen>

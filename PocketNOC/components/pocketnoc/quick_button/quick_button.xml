@@ -1,0 +1,12 @@
+<component>
+	<api>
+		<prop name="icon" type="image" default="" />
+		<prop name="caption" type="string" default="" />
+		<prop name="bg_color" type="color" default="#c_card" />
+	</api>
+	<view extends="lv_button" width="44" height="44" style_radius="10" style_shadow_width="0" style_pad_all="0" style_bg_color="$bg_color">
+		<style name="style_pn_pressed" selector="pressed" />
+		<lv_image src="$icon" align="top_mid" y="4" style_image_recolor="#c_text" style_image_recolor_opa="100%" />
+		<lv_label text="$caption" align="bottom_mid" y="-3" style_text_font="font_14" style_text_color="#c_text" style_text_letter_space="-1" />
+	</view>
+</component>

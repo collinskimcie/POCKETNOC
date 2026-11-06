@@ -1,0 +1,14 @@
+<component>
+	<api>
+		<prop name="text" type="string" default="" />
+		<prop name="value" type="string" default="" />
+	</api>
+	<view extends="lv_obj" width="224" height="40" scrollable="false" clickable="false">
+		<style name="style_pn_card" />
+		<lv_label text="$text" align="left_mid" x="12" style_text_font="font_body" />
+		<lv_button width="76" height="30" align="right_mid" x="-6" style_radius="10" style_shadow_width="0" style_bg_color="#c_accent">
+			<style name="style_pn_pressed" selector="pressed" />
+			<lv_label text="$value" align="center" style_text_color="0xffffff" />
+		</lv_button>
+	</view>
+</component>

@@ -1,0 +1,28 @@
+<screen>
+	<view extends="lv_obj" scrollable="false">
+		<style name="style_pn_page" />
+		<lv_label text="Tools" align="top_mid" y="6" style_text_font="font_30" />
+		<lv_obj width="228" height="232" align="top_left" x="6" y="44" flex_flow="row_wrap" style_bg_opa="0%" style_border_width="0" style_pad_all="2" style_pad_gap="6">
+			<tool_group_heading text="Wi-Fi" color="#c_light_blue" />
+			<tool_button name="Scan networks" group_color="#c_light_blue" />
+			<tool_button name="Channels" group_color="#c_light_blue" />
+			<tool_button name="Signal" group_color="#c_light_blue" />
+			<tool_button name="Connect" group_color="#c_light_blue" />
+			<tool_group_heading text="LAN" color="#c_green" />
+			<tool_button name="Ping" group_color="#c_green" />
+			<tool_button name="Ports" group_color="#c_green" />
+			<tool_button name="Wake-on-LAN" group_color="#c_green" />
+			<tool_button name="New devices" group_color="#c_green" />
+			<tool_group_heading text="Internet" color="#c_orange" />
+			<tool_button name="Speed test" group_color="#c_orange" />
+			<tool_button name="Public IP" group_color="#c_orange" />
+			<tool_button name="DNS" group_color="#c_orange" />
+			<tool_group_heading text="Cloud" color="#c_purple" />
+			<tool_button name="GitHub" group_color="#c_purple" />
+			<tool_group_heading text="IoT" color="#c_teal" />
+			<tool_button name="MQTT" group_color="#c_teal" />
+			<tool_button name="BLE" group_color="#c_teal" />
+		</lv_obj>
+		<tab_bar align="bottom_mid" />
+	</view>
+</screen>
