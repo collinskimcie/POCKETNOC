@@ -1,0 +1,33 @@
+<screen>
+	<view extends="lv_obj" scrollable="false">
+		<style name="style_pn_page" />
+		<lv_label text="PocketNOC" align="top_left" x="12" y="9" style_text_font="font_14" style_text_color="#c_grey" />
+		<lv_image src="icon_wifi" align="top_right" x="-46" y="10" style_image_recolor="#c_text" style_image_recolor_opa="100%" />
+		<lv_button width="34" height="28" align="top_right" x="-4" y="3" style_bg_opa="0%" style_shadow_width="0" style_pad_all="0">
+			<lv_image src="icon_settings" align="center" style_image_recolor="#c_grey" style_image_recolor_opa="100%" />
+		</lv_button>
+
+		<lv_label text="14:05" align="top_mid" y="26" style_text_font="font_30" />
+		<lv_label text="Thu 5 Nov" align="top_mid" y="62" style_text_font="font_14" style_text_color="#c_grey" />
+
+		<lv_obj width="224" height="92" align="top_mid" y="84" scrollable="false" style_radius="14">
+			<style name="style_pn_card" />
+			<lv_arc width="72" height="72" align="left_mid" x="10" clickable="false" value="80" />
+			<lv_label text="4/5" align="left_mid" x="10" width="72" style_text_align="center" style_text_font="font_body" />
+			<lv_label text="1 service down" align="left_mid" x="96" width="118" long_mode="wrap" style_text_font="font_body" />
+		</lv_obj>
+
+		<stat_tile x="8" y="180" caption="Avg" value="142 ms" />
+		<stat_tile x="85" y="180" caption="Signal" value="-62 dBm" />
+		<stat_tile x="162" y="180" caption="Uptime" value="3d 4h" />
+
+		<quick_button x="4" y="230" icon="icon_wifi" caption="Scan" />
+		<quick_button x="51" y="230" icon="icon_refresh" caption="Ping" />
+		<quick_button x="98" y="230" icon="icon_download" caption="Speed" />
+		<quick_button x="145" y="230" icon="icon_check" caption="Check" />
+		<quick_button x="192" y="230" icon="icon_star" caption="Git" bg_color="#c_accent" />
+
+		<tab_bar align="bottom_mid" />
+		<alarm_banner align="top_mid" y="4" hidden="true" />
+	</view>
+</screen>

@@ -1,0 +1,11 @@
+<component>
+	<api>
+		<prop name="text" type="string" default="" />
+		<prop name="subject" type="subject" />
+	</api>
+	<view extends="lv_obj" width="224" height="40" scrollable="false" clickable="false">
+		<style name="style_pn_card" />
+		<lv_label text="$text" align="left_mid" x="12" style_text_font="font_body" />
+		<lv_switch bind_checked="$subject" width="55" height="30" align="right_mid" x="-10" style_bg_color-indicator-checked="#c_accent" />
+	</view>
+</component>

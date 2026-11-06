@@ -1,0 +1,8 @@
+<component>
+	<api>
+		<prop name="text" type="string" default="DOWN: Example service" />
+	</api>
+	<view extends="lv_obj" width="232" height="46" scrollable="false" style_bg_color="#c_red" style_bg_opa="100%" style_border_width="0">
+		<lv_label text="$text" align="center" style_text_color="0xffffff" style_text_align="center" />
+	</view>
+</component>

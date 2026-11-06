@@ -1,0 +1,18 @@
+<screen>
+	<view extends="lv_obj" scrollable="false">
+		<style name="style_pn_page" />
+		<page_header title="Service" />
+		<lv_obj width="224" height="100" align="top_left" x="8" y="44" scrollable="false" style_radius="14">
+			<style name="style_pn_card" />
+			<lv_label text="Home server" align="top_left" x="12" y="8" width="200" height="20" long_mode="dots" style_text_font="font_body" />
+			<lv_label text="UP" align="top_left" x="12" y="28" style_text_font="font_30" style_text_color="#c_green" />
+			<lv_label text="http://192.168.1.10:8080/health" align="top_left" x="12" y="64" width="200" height="32" long_mode="dots" style_text_font="font_14" style_text_color="#c_grey" />
+		</lv_obj>
+		<lv_obj width="224" height="74" align="top_left" x="8" y="152" scrollable="false" style_radius="14">
+			<style name="style_pn_card" />
+			<lv_label text="Last: 41 ms (code 200)&#10;Average: 44 ms (last 20)&#10;Uptime: 99% (198 of 200)" align="top_left" x="12" y="8" width="200" style_text_font="font_14" style_text_line_space="4" />
+		</lv_obj>
+		<lv_label text="Response time (ms)" align="top_left" x="12" y="232" style_text_font="font_14" style_text_color="#c_grey" />
+		<lv_chart width="224" height="60" align="top_left" x="8" y="252" style_radius="10" style_bg_color="#c_chart_bg" style_border_width="0" />
+	</view>
+</screen>

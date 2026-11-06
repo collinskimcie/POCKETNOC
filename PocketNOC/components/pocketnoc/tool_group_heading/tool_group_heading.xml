@@ -1,0 +1,7 @@
+<component>
+	<api>
+		<prop name="text" type="string" default="" />
+		<prop name="color" type="color" default="#c_light_blue" />
+	</api>
+	<view extends="lv_label" text="$text" width="100%" style_text_font="font_body" style_text_color="$color" style_pad_top="8" />
+</component>

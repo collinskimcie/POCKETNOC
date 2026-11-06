@@ -1,0 +1,8 @@
+<screen>
+	<view extends="lv_obj" scrollable="false">
+		<style name="style_pn_page" />
+		<lv_label text="Device Info" align="top_mid" y="6" style_text_font="font_30" />
+		<lv_label text="Wi-Fi: MyNetwork&#10;IP: 192.168.1.50&#10;Signal: -62 dBm&#10;Free heap: 120 KB&#10;Uptime: 3d 4h" align="top_left" x="8" y="46" width="224" style_text_font="font_body" style_text_line_space="4" />
+		<tab_bar align="bottom_mid" />
+	</view>
+</screen>

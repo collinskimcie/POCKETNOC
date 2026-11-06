@@ -1,0 +1,13 @@
+<component>
+	<api>
+		<prop name="title" type="string" default="" />
+	</api>
+	<view extends="lv_obj" width="240" height="44" scrollable="false">
+		<style name="style_pn_clear" />
+		<lv_button width="84" height="30" align="top_left" x="8" y="6" style_radius="10" style_shadow_width="0" style_bg_color="#c_card">
+			<style name="style_pn_pressed" selector="pressed" />
+			<lv_label text="&lt; Back" align="center" style_text_color="#c_text" />
+		</lv_button>
+		<lv_label text="$title" align="top_right" x="-12" y="14" style_text_font="font_body" />
+	</view>
+</component>

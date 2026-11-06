@@ -1,0 +1,12 @@
+<screen>
+	<view extends="lv_obj" scrollable="false">
+		<style name="style_pn_page" />
+		<page_header title="Settings" />
+		<setting_switch_row x="8" y="49" text="Dark theme" subject="pn_dark_theme" />
+		<setting_switch_row x="8" y="95" text="Alerts" subject="pn_alerts" />
+		<setting_switch_row x="8" y="141" text="Buzzer mute" subject="pn_buzzer_mute" />
+		<setting_button_row x="8" y="187" text="Auto-return" value="90 s" />
+		<setting_button_row x="8" y="233" text="Clock" value="24 h" />
+		<lv_label text="Changing the theme restarts the board" align="top_left" x="10" y="288" style_text_font="font_14" style_text_color="#c_grey" />
+	</view>
+</screen>

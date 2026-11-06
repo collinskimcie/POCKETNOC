@@ -1,0 +1,11 @@
+<component>
+	<api>
+		<prop name="caption" type="string" default="Avg" />
+		<prop name="value" type="string" default="--" />
+	</api>
+	<view extends="lv_obj" width="70" height="46" scrollable="false" style_radius="10">
+		<style name="style_pn_card" />
+		<lv_label text="$caption" align="top_mid" y="4" style_text_font="font_14" style_text_color="#c_grey" />
+		<lv_label text="$value" align="bottom_mid" y="-4" style_text_font="font_body" />
+	</view>
+</component>
