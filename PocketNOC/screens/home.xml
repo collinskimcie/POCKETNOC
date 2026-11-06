@@ -12,7 +12,12 @@
 
 		<lv_obj width="224" height="92" align="top_mid" y="84" scrollable="false" style_radius="14">
 			<style name="style_pn_card" />
-			<lv_arc width="72" height="72" align="left_mid" x="10" clickable="false" value="80" />
+			<lv_arc width="72" height="72" align="left_mid" x="10" clickable="false"
+				min_value="0" max_value="100" value="80"
+				bg_start_angle="0" bg_end_angle="360" rotation="270"
+				style_arc_width="9" style_arc_width-indicator="9"
+				style_arc_color="#c_bg" style_arc_color-indicator="#c_blue"
+				style_bg_opa-knob="0%" style_pad_all-knob="0" />
 			<lv_label text="4/5" align="left_mid" x="10" width="72" style_text_align="center" style_text_font="font_body" />
 			<lv_label text="1 service down" align="left_mid" x="96" width="118" long_mode="wrap" style_text_font="font_body" />
 		</lv_obj>
