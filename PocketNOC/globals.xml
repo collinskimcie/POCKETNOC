@@ -39,6 +39,23 @@
 		<color name="color_accent_text" value="0xFFFFFF" help="Text/icon drawn on top of the accent color" />
 		<color name="color_danger" value="0xE5484D" help="Destructive / warning color" />
 		<color name="color_track" value="0x9AA3B2" help="Neutral track behind sliders/arcs/bars" />
+	
+		<!-- PocketNOC palette (dark) -->
+		<color name="c_bg" value="0x0f141a" />
+		<color name="c_text" value="0xe6ebf0" />
+		<color name="c_card" value="0x232c37" />
+		<color name="c_chart_bg" value="0x1a222b" />
+		<color name="c_grid" value="0x364352" />
+		<color name="c_grey" value="0x9e9e9e" />
+		<color name="c_blue" value="0x2196f3" />
+		<color name="c_accent" value="0x1976d2" />
+		<color name="c_accent_pressed" value="0x1565c0" />
+		<color name="c_green" value="0x4caf50" />
+		<color name="c_red" value="0xf44336" />
+		<color name="c_light_blue" value="0x03a9f4" />
+		<color name="c_orange" value="0xff9800" />
+		<color name="c_purple" value="0x9c27b0" />
+		<color name="c_teal" value="0x009688" />
 	</consts>
 
 	<!-- Montserrat, compiled in (as_file="false"). Latin range + a few symbols;
@@ -112,6 +129,9 @@
 			symbols="°—•"
 			as_file="false"
 		/>
+	
+		<bin name="font_14" size="14" src_path="fonts/Montserrat-Regular.ttf" bpp="4" range="0x20-0x7F" symbols="°—•" as_file="false" />
+		<bin name="font_30" size="30" src_path="fonts/Montserrat-Regular.ttf" bpp="4" range="0x20-0x7F" symbols="°—•" as_file="false" />
 	</fonts>
 
 	<!-- Observable model the UI binds to. Add your own and bind widgets with
@@ -126,6 +146,10 @@
 			help="Example value (0..100) driven by the demo controls"
 		/>
 		<int name="subject_show_keyboard" value="0" help="Wether to show a keyboard " />
+	
+		<int name="pn_dark_theme" value="1" min_value="0" max_value="1" />
+		<int name="pn_alerts" value="1" min_value="0" max_value="1" />
+		<int name="pn_buzzer_mute" value="0" min_value="0" max_value="1" />
 	</subjects>
 
 	<images>
@@ -519,5 +543,11 @@
 			bg_opa="80%"
 			pad_all="#space_sm"
 		/>
+	
+		<!-- PocketNOC styles -->
+		<style name="style_pn_page" bg_color="#c_bg" bg_opa="100%" text_color="#c_text" text_font="font_body" pad_all="0" border_width="0" radius="0" />
+		<style name="style_pn_card" bg_color="#c_card" bg_opa="100%" text_color="#c_text" radius="12" border_width="0" pad_all="0" />
+		<style name="style_pn_clear" bg_opa="0%" border_width="0" pad_all="0" />
+		<style name="style_pn_pressed" bg_color="#c_accent_pressed" />
 	</styles>
 </globals>
