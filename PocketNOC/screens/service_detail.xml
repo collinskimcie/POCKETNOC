@@ -19,7 +19,7 @@
 				style_line_color="#c_grid" style_width-indicator="0" style_height-indicator="0">
 			<lv_chart-axis axis="primary_y" min_value="0" max_value="500" />
 			<lv_chart-series color="#c_light_blue" axis="primary_y"
-				values="42, 40, 45, 41, 44, 39, 43, 120, 46, 41, 40, 44, 43, 41, 45, 42, 40, 43, 41, 44" />
+				values="42 40 45 41 44 39 43 120 46 41 40 44 43 41 45 42 40 43 41 44" />
 		</lv_chart>
 	</view>
 </screen>

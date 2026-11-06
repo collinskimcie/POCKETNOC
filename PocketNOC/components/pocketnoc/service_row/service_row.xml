@@ -1,6 +1,6 @@
 <component>
 	<api>
-		<prop name="name" type="string" default="Service" />
+		<prop name="title" type="string" default="Service" />
 		<prop name="info" type="string" default="" />
 		<prop name="dot_color" type="color" default="#c_green" />
 	</api>
@@ -8,7 +8,7 @@
 		<style name="style_pn_card" />
 		<style name="style_pn_pressed" selector="pressed" />
 		<lv_obj width="14" height="14" align="left_mid" x="10" scrollable="false" clickable="false" style_radius="100" style_border_width="0" style_bg_opa="100%" style_bg_color="$dot_color" />
-		<lv_label text="$name" align="top_left" x="32" y="3" width="180" height="20" long_mode="dots" style_text_font="font_body" />
+		<lv_label text="$title" align="top_left" x="32" y="3" width="180" height="20" long_mode="dots" style_text_font="font_body" />
 		<lv_label text="$info" align="top_left" x="32" y="22" style_text_font="font_14" style_text_color="#c_grey" />
 	</view>
 </component>
