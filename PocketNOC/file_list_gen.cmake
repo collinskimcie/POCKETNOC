@@ -22,12 +22,24 @@ list(
   ${CMAKE_CURRENT_LIST_DIR}/components/list/list_section/list_section_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/components/list/list_separator/list_separator_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/components/list/list/list_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/components/pocketnoc/alarm_banner/alarm_banner_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/components/pocketnoc/page_header/page_header_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/components/pocketnoc/quick_button/quick_button_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/components/pocketnoc/service_row/service_row_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/components/pocketnoc/setting_button_row/setting_button_row_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/components/pocketnoc/setting_switch_row/setting_switch_row_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/components/pocketnoc/stat_tile/stat_tile_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/components/pocketnoc/tab_bar/tab_bar_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/components/pocketnoc/tool_button/tool_button_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/components/pocketnoc/tool_group_heading/tool_group_heading_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/components/typography/h1/h1_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/components/typography/h2/h2_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/components/typography/h3/h3_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/components/typography/h4/h4_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/components/typography/h5/h5_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/components/typography/text/text_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/fonts/font_14_data.c
+  ${CMAKE_CURRENT_LIST_DIR}/fonts/font_30_data.c
   ${CMAKE_CURRENT_LIST_DIR}/fonts/font_body_data.c
   ${CMAKE_CURRENT_LIST_DIR}/fonts/font_body_symbols_data.c
   ${CMAKE_CURRENT_LIST_DIR}/fonts/font_h1_data.c
@@ -83,4 +95,12 @@ list(
   ${CMAKE_CURRENT_LIST_DIR}/images/icon_wifi_zero_data.c
   ${CMAKE_CURRENT_LIST_DIR}/PocketNOC_gen.c
   ${CMAKE_CURRENT_LIST_DIR}/PocketNOC.c
-  ${CMAKE_CURRENT_LIST_DIR}/screens/screen_components_gen.c)
+  ${CMAKE_CURRENT_LIST_DIR}/screens/home_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/incidents_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/info_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/screen_components_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/service_detail_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/settings_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/status_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/tool_page_gen.c
+  ${CMAKE_CURRENT_LIST_DIR}/screens/tools_gen.c)

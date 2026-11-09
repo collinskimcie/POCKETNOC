@@ -75,6 +75,10 @@ lv_font_t * font_h2;
 extern lv_font_t font_h2_data;
 lv_font_t * font_h1;
 extern lv_font_t font_h1_data;
+lv_font_t * font_14;
+extern lv_font_t font_14_data;
+lv_font_t * font_30;
+extern lv_font_t font_30_data;
 
 /*----------------
  * Images
@@ -185,6 +189,10 @@ lv_style_t style_panel_dark;
 lv_style_t style_text_accent;
 lv_style_t style_text_muted;
 lv_style_t style_scrollbar;
+lv_style_t style_pn_page;
+lv_style_t style_pn_card;
+lv_style_t style_pn_clear;
+lv_style_t style_pn_pressed;
 
 /*----------------
  * Subjects
@@ -193,6 +201,9 @@ lv_style_t style_scrollbar;
 lv_subject_t subject_theme_dark;
 lv_subject_t subject_brightness;
 lv_subject_t subject_show_keyboard;
+lv_subject_t pn_dark_theme;
+lv_subject_t pn_alerts;
+lv_subject_t pn_buzzer_mute;
 
 /**********************
  *      MACROS
@@ -264,6 +275,18 @@ void PocketNOC_init_gen(const char * asset_path)
             /* font_h1 */
             /* get font 'font_h1' from a C array */
             font_h1 = &font_h1_data;
+
+        }
+        if (!font_14) {
+            /* font_14 */
+            /* get font 'font_14' from a C array */
+            font_14 = &font_14_data;
+
+        }
+        if (!font_30) {
+            /* font_30 */
+            /* get font 'font_30' from a C array */
+            font_30 = &font_30_data;
 
         }
     }
@@ -478,6 +501,10 @@ void PocketNOC_init_gen(const char * asset_path)
         lv_style_init(&style_text_accent);
         lv_style_init(&style_text_muted);
         lv_style_init(&style_scrollbar);
+        lv_style_init(&style_pn_page);
+        lv_style_init(&style_pn_card);
+        lv_style_init(&style_pn_clear);
+        lv_style_init(&style_pn_pressed);
 
         lv_style_set_bg_color(&style_screen_light, COLOR_LIGHT_BG);
         lv_style_set_bg_opa(&style_screen_light, (255 * 100 / 100));
@@ -510,6 +537,23 @@ void PocketNOC_init_gen(const char * asset_path)
         lv_style_set_bg_color(&style_scrollbar, COLOR_TRACK);
         lv_style_set_bg_opa(&style_scrollbar, (255 * 80 / 100));
         lv_style_set_pad_all(&style_scrollbar, SPACE_SM);
+        lv_style_set_bg_color(&style_pn_page, C_BG);
+        lv_style_set_bg_opa(&style_pn_page, (255 * 100 / 100));
+        lv_style_set_text_color(&style_pn_page, C_TEXT);
+        lv_style_set_text_font(&style_pn_page, font_body);
+        lv_style_set_pad_all(&style_pn_page, 0);
+        lv_style_set_border_width(&style_pn_page, 0);
+        lv_style_set_radius(&style_pn_page, 0);
+        lv_style_set_bg_color(&style_pn_card, C_CARD);
+        lv_style_set_bg_opa(&style_pn_card, (255 * 100 / 100));
+        lv_style_set_text_color(&style_pn_card, C_TEXT);
+        lv_style_set_radius(&style_pn_card, 12);
+        lv_style_set_border_width(&style_pn_card, 0);
+        lv_style_set_pad_all(&style_pn_card, 0);
+        lv_style_set_bg_opa(&style_pn_clear, (255 * 0 / 100));
+        lv_style_set_border_width(&style_pn_clear, 0);
+        lv_style_set_pad_all(&style_pn_clear, 0);
+        lv_style_set_bg_color(&style_pn_pressed, C_ACCENT_PRESSED);
 
         style_inited = true;
     }
@@ -524,6 +568,15 @@ void PocketNOC_init_gen(const char * asset_path)
     lv_subject_set_min_value_int(&subject_brightness, 0);
     lv_subject_set_max_value_int(&subject_brightness, 100);
     lv_subject_init_int(&subject_show_keyboard, 0);
+    lv_subject_init_int(&pn_dark_theme, 1);
+    lv_subject_set_min_value_int(&pn_dark_theme, 0);
+    lv_subject_set_max_value_int(&pn_dark_theme, 1);
+    lv_subject_init_int(&pn_alerts, 1);
+    lv_subject_set_min_value_int(&pn_alerts, 0);
+    lv_subject_set_max_value_int(&pn_alerts, 1);
+    lv_subject_init_int(&pn_buzzer_mute, 0);
+    lv_subject_set_min_value_int(&pn_buzzer_mute, 0);
+    lv_subject_set_max_value_int(&pn_buzzer_mute, 1);
 
     /*----------------
      * Translations
@@ -546,6 +599,8 @@ void PocketNOC_init_gen(const char * asset_path)
     check_font(&font_h3, "font_h3");
     check_font(&font_h2, "font_h2");
     check_font(&font_h1, "font_h1");
+    check_font(&font_14, "font_14");
+    check_font(&font_30, "font_30");
 
     /* Register fonts */
     lv_xml_register_font(NULL, "font_body_symbols", font_body_symbols);
@@ -555,11 +610,16 @@ void PocketNOC_init_gen(const char * asset_path)
     lv_xml_register_font(NULL, "font_h3", font_h3);
     lv_xml_register_font(NULL, "font_h2", font_h2);
     lv_xml_register_font(NULL, "font_h1", font_h1);
+    lv_xml_register_font(NULL, "font_14", font_14);
+    lv_xml_register_font(NULL, "font_30", font_30);
 
     /* Register subjects */
     lv_xml_register_subject(NULL, "subject_theme_dark", &subject_theme_dark);
     lv_xml_register_subject(NULL, "subject_brightness", &subject_brightness);
     lv_xml_register_subject(NULL, "subject_show_keyboard", &subject_show_keyboard);
+    lv_xml_register_subject(NULL, "pn_dark_theme", &pn_dark_theme);
+    lv_xml_register_subject(NULL, "pn_alerts", &pn_alerts);
+    lv_xml_register_subject(NULL, "pn_buzzer_mute", &pn_buzzer_mute);
 
     /* Register callbacks */
 #endif

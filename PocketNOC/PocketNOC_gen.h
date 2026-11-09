@@ -128,6 +128,21 @@ bool PocketNOC_check_target(uint32_t target);
  * Neutral track behind sliders/arcs/bars
  */
 #define COLOR_TRACK lv_color_hex(0x9AA3B2)
+#define C_BG lv_color_hex(0x0f141a)
+#define C_TEXT lv_color_hex(0xe6ebf0)
+#define C_CARD lv_color_hex(0x232c37)
+#define C_CHART_BG lv_color_hex(0x1a222b)
+#define C_GRID lv_color_hex(0x364352)
+#define C_GREY lv_color_hex(0x9e9e9e)
+#define C_BLUE lv_color_hex(0x2196f3)
+#define C_ACCENT lv_color_hex(0x1976d2)
+#define C_ACCENT_PRESSED lv_color_hex(0x1565c0)
+#define C_GREEN lv_color_hex(0x4caf50)
+#define C_RED lv_color_hex(0xf44336)
+#define C_LIGHT_BLUE lv_color_hex(0x03a9f4)
+#define C_ORANGE lv_color_hex(0xff9800)
+#define C_PURPLE lv_color_hex(0x9c27b0)
+#define C_TEAL lv_color_hex(0x009688)
 
 
 #ifndef LV_XML_EVAL_STRING_BUF_SIZE
@@ -159,6 +174,10 @@ extern lv_style_t style_panel_dark;
 extern lv_style_t style_text_accent;
 extern lv_style_t style_text_muted;
 extern lv_style_t style_scrollbar;
+extern lv_style_t style_pn_page;
+extern lv_style_t style_pn_card;
+extern lv_style_t style_pn_clear;
+extern lv_style_t style_pn_pressed;
 
 /*----------------
  * Fonts
@@ -172,6 +191,8 @@ extern lv_font_t * font_h4;
 extern lv_font_t * font_h3;
 extern lv_font_t * font_h2;
 extern lv_font_t * font_h1;
+extern lv_font_t * font_14;
+extern lv_font_t * font_30;
 
 
 /*----------------
@@ -233,6 +254,9 @@ extern const void * icon_wifi_zero;
 extern lv_subject_t subject_theme_dark;
 extern lv_subject_t subject_brightness;
 extern lv_subject_t subject_show_keyboard;
+extern lv_subject_t pn_dark_theme;
+extern lv_subject_t pn_alerts;
+extern lv_subject_t pn_buzzer_mute;
 
 /**********************
  * GLOBAL PROTOTYPES
@@ -278,13 +302,31 @@ void PocketNOC_init_gen(const char * asset_path);
 #include "components/list/list_section/list_section_gen.h"
 #include "components/list/list_separator/list_separator_gen.h"
 #include "components/list/list/list_gen.h"
+#include "components/pocketnoc/alarm_banner/alarm_banner_gen.h"
+#include "components/pocketnoc/page_header/page_header_gen.h"
+#include "components/pocketnoc/quick_button/quick_button_gen.h"
+#include "components/pocketnoc/service_row/service_row_gen.h"
+#include "components/pocketnoc/setting_button_row/setting_button_row_gen.h"
+#include "components/pocketnoc/setting_switch_row/setting_switch_row_gen.h"
+#include "components/pocketnoc/stat_tile/stat_tile_gen.h"
+#include "components/pocketnoc/tab_bar/tab_bar_gen.h"
+#include "components/pocketnoc/tool_button/tool_button_gen.h"
+#include "components/pocketnoc/tool_group_heading/tool_group_heading_gen.h"
 #include "components/typography/h1/h1_gen.h"
 #include "components/typography/h2/h2_gen.h"
 #include "components/typography/h3/h3_gen.h"
 #include "components/typography/h4/h4_gen.h"
 #include "components/typography/h5/h5_gen.h"
 #include "components/typography/text/text_gen.h"
+#include "screens/home_gen.h"
+#include "screens/incidents_gen.h"
+#include "screens/info_gen.h"
 #include "screens/screen_components_gen.h"
+#include "screens/service_detail_gen.h"
+#include "screens/settings_gen.h"
+#include "screens/status_gen.h"
+#include "screens/tool_page_gen.h"
+#include "screens/tools_gen.h"
 
 #ifdef __cplusplus
 } /*extern "C"*/
