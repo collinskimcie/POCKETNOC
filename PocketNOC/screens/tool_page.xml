@@ -2,9 +2,11 @@
 	<view extends="lv_obj" scrollable="false">
 		<style name="style_pn_page" />
 		<lv_button width="84" height="30" align="top_left" x="6" y="4" style_radius="10" style_shadow_width="0" style_bg_color="#c_card">
+			<style name="style_pn_pressed" selector="pressed" />
 			<lv_label text="&lt; Back" align="center" style_text_color="#c_text" />
 		</lv_button>
 		<lv_button width="84" height="30" align="top_right" x="-6" y="4" style_radius="10" style_shadow_width="0" style_bg_color="#c_accent">
+			<style name="style_pn_pressed" selector="pressed" />
 			<lv_label text="Run" align="center" style_text_color="0xffffff" />
 		</lv_button>
 		<lv_label text="Ping" align="top_left" x="6" y="38" width="228" height="20" long_mode="dots" style_text_font="font_body" />

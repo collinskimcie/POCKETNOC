@@ -549,5 +549,6 @@
 		<style name="style_pn_card" bg_color="#c_card" bg_opa="100%" text_color="#c_text" radius="12" border_width="0" pad_all="0" />
 		<style name="style_pn_clear" bg_opa="0%" border_width="0" pad_all="0" />
 		<style name="style_pn_pressed" bg_color="#c_accent_pressed" />
+		<style name="style_pn_tab_pressed" bg_color="#c_accent_pressed" bg_opa="30%" />
 	</styles>
 </globals>

@@ -2,18 +2,22 @@
 	<view extends="lv_obj" width="240" height="40" scrollable="false" style_radius="0">
 		<style name="style_pn_card" />
 		<lv_button width="60" height="40" x="0" y="0" style_radius="0" style_pad_all="0" style_shadow_width="0" style_bg_opa="0%">
+			<style name="style_pn_tab_pressed" selector="pressed" />
 			<lv_image src="icon_home" align="top_mid" y="3" style_image_recolor="#c_text" style_image_recolor_opa="100%" />
 			<lv_label text="Home" align="bottom_mid" y="-1" style_text_font="font_14" style_text_color="#c_text" />
 		</lv_button>
 		<lv_button width="60" height="40" x="60" y="0" style_radius="0" style_pad_all="0" style_shadow_width="0" style_bg_opa="0%">
+			<style name="style_pn_tab_pressed" selector="pressed" />
 			<lv_image src="icon_menu" align="top_mid" y="3" style_image_recolor="#c_text" style_image_recolor_opa="100%" />
 			<lv_label text="Status" align="bottom_mid" y="-1" style_text_font="font_14" style_text_color="#c_text" />
 		</lv_button>
 		<lv_button width="60" height="40" x="120" y="0" style_radius="0" style_pad_all="0" style_shadow_width="0" style_bg_opa="0%">
+			<style name="style_pn_tab_pressed" selector="pressed" />
 			<lv_image src="icon_settings" align="top_mid" y="3" style_image_recolor="#c_text" style_image_recolor_opa="100%" />
 			<lv_label text="Tools" align="bottom_mid" y="-1" style_text_font="font_14" style_text_color="#c_text" />
 		</lv_button>
 		<lv_button width="60" height="40" x="180" y="0" style_radius="0" style_pad_all="0" style_shadow_width="0" style_bg_opa="0%">
+			<style name="style_pn_tab_pressed" selector="pressed" />
 			<lv_image src="icon_info" align="top_mid" y="3" style_image_recolor="#c_text" style_image_recolor_opa="100%" />
 			<lv_label text="Info" align="bottom_mid" y="-1" style_text_font="font_14" style_text_color="#c_text" />
 		</lv_button>
