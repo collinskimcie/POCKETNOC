@@ -178,6 +178,7 @@ extern lv_style_t style_pn_page;
 extern lv_style_t style_pn_card;
 extern lv_style_t style_pn_clear;
 extern lv_style_t style_pn_pressed;
+extern lv_style_t style_pn_tab_pressed;
 
 /*----------------
  * Fonts

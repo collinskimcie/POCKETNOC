@@ -53,6 +53,7 @@ lv_obj_t * tool_page_create(void)
         lv_obj_set_style_radius(lv_button_0, 10, 0);
         lv_obj_set_style_shadow_width(lv_button_0, 0, 0);
         lv_obj_set_style_bg_color(lv_button_0, C_CARD, 0);
+        lv_obj_add_style(lv_button_0, &style_pn_pressed, LV_STATE_PRESSED);
         lv_obj_t * lv_label_0 = lv_label_create(lv_button_0);
         lv_label_set_text(lv_label_0, "< Back");
         lv_obj_set_align(lv_label_0, LV_ALIGN_CENTER);
@@ -67,6 +68,7 @@ lv_obj_t * tool_page_create(void)
         lv_obj_set_style_radius(lv_button_1, 10, 0);
         lv_obj_set_style_shadow_width(lv_button_1, 0, 0);
         lv_obj_set_style_bg_color(lv_button_1, C_ACCENT, 0);
+        lv_obj_add_style(lv_button_1, &style_pn_pressed, LV_STATE_PRESSED);
         lv_obj_t * lv_label_1 = lv_label_create(lv_button_1);
         lv_label_set_text(lv_label_1, "Run");
         lv_obj_set_align(lv_label_1, LV_ALIGN_CENTER);

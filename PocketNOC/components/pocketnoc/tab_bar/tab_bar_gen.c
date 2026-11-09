@@ -56,6 +56,7 @@ lv_obj_t * tab_bar_create(lv_obj_t * parent)
         lv_obj_set_style_pad_all(lv_button_0, 0, 0);
         lv_obj_set_style_shadow_width(lv_button_0, 0, 0);
         lv_obj_set_style_bg_opa(lv_button_0, (255 * 0 / 100), 0);
+        lv_obj_add_style(lv_button_0, &style_pn_tab_pressed, LV_STATE_PRESSED);
         lv_obj_t * lv_image_0 = lv_image_create(lv_button_0);
         lv_image_set_src(lv_image_0, icon_home);
         lv_obj_set_align(lv_image_0, LV_ALIGN_TOP_MID);
@@ -79,6 +80,7 @@ lv_obj_t * tab_bar_create(lv_obj_t * parent)
         lv_obj_set_style_pad_all(lv_button_1, 0, 0);
         lv_obj_set_style_shadow_width(lv_button_1, 0, 0);
         lv_obj_set_style_bg_opa(lv_button_1, (255 * 0 / 100), 0);
+        lv_obj_add_style(lv_button_1, &style_pn_tab_pressed, LV_STATE_PRESSED);
         lv_obj_t * lv_image_1 = lv_image_create(lv_button_1);
         lv_image_set_src(lv_image_1, icon_menu);
         lv_obj_set_align(lv_image_1, LV_ALIGN_TOP_MID);
@@ -102,6 +104,7 @@ lv_obj_t * tab_bar_create(lv_obj_t * parent)
         lv_obj_set_style_pad_all(lv_button_2, 0, 0);
         lv_obj_set_style_shadow_width(lv_button_2, 0, 0);
         lv_obj_set_style_bg_opa(lv_button_2, (255 * 0 / 100), 0);
+        lv_obj_add_style(lv_button_2, &style_pn_tab_pressed, LV_STATE_PRESSED);
         lv_obj_t * lv_image_2 = lv_image_create(lv_button_2);
         lv_image_set_src(lv_image_2, icon_settings);
         lv_obj_set_align(lv_image_2, LV_ALIGN_TOP_MID);
@@ -125,6 +128,7 @@ lv_obj_t * tab_bar_create(lv_obj_t * parent)
         lv_obj_set_style_pad_all(lv_button_3, 0, 0);
         lv_obj_set_style_shadow_width(lv_button_3, 0, 0);
         lv_obj_set_style_bg_opa(lv_button_3, (255 * 0 / 100), 0);
+        lv_obj_add_style(lv_button_3, &style_pn_tab_pressed, LV_STATE_PRESSED);
         lv_obj_t * lv_image_3 = lv_image_create(lv_button_3);
         lv_image_set_src(lv_image_3, icon_info);
         lv_obj_set_align(lv_image_3, LV_ALIGN_TOP_MID);

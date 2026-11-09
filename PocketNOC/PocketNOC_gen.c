@@ -193,6 +193,7 @@ lv_style_t style_pn_page;
 lv_style_t style_pn_card;
 lv_style_t style_pn_clear;
 lv_style_t style_pn_pressed;
+lv_style_t style_pn_tab_pressed;
 
 /*----------------
  * Subjects
@@ -505,6 +506,7 @@ void PocketNOC_init_gen(const char * asset_path)
         lv_style_init(&style_pn_card);
         lv_style_init(&style_pn_clear);
         lv_style_init(&style_pn_pressed);
+        lv_style_init(&style_pn_tab_pressed);
 
         lv_style_set_bg_color(&style_screen_light, COLOR_LIGHT_BG);
         lv_style_set_bg_opa(&style_screen_light, (255 * 100 / 100));
@@ -554,6 +556,8 @@ void PocketNOC_init_gen(const char * asset_path)
         lv_style_set_border_width(&style_pn_clear, 0);
         lv_style_set_pad_all(&style_pn_clear, 0);
         lv_style_set_bg_color(&style_pn_pressed, C_ACCENT_PRESSED);
+        lv_style_set_bg_color(&style_pn_tab_pressed, C_ACCENT_PRESSED);
+        lv_style_set_bg_opa(&style_pn_tab_pressed, (255 * 30 / 100));
 
         style_inited = true;
     }
